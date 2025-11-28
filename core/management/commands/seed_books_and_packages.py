@@ -1,18 +1,29 @@
 # core/management/commands/seed_books_and_packages.py
 
 from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
 from django.utils.text import slugify
 from core.models import CoinPackage, Book
 import os
 
+
 class Command(BaseCommand):
-    help = 'Seed database with Coin Packages and all static books (swap + new)'
-    
     def handle(self, *args, **options):
         self.stdout.write("Starting database seeding...")
-        if Book.objects.exists() and CoinPackage.objects.exists():
-            self.stdout.write("Data already seeded. Skipping.")
-            return
+
+        # === 1. ENSURE ADMIN USER EXISTS ===
+        admin_user, created = User.objects.get_or_create(
+            username='admin',
+            defaults={
+                'email': 'admin@zerobookswap.com',
+                'is_staff': True,
+                'is_superuser': True,
+            }
+        )
+        if created:
+            admin_user.set_password('admin123')  # change later
+            admin_user.save()
+            self.stdout.write(self.style.SUCCESS("Created admin user: admin / admin123"))
 
         # ==============================
         # 1. Create Coin Packages
@@ -50,7 +61,7 @@ class Command(BaseCommand):
 
         for book in swap_books:
             obj, created = Book.objects.update_or_create(
-                added_by_id=1,
+                added_by=admin_user,
                 title=book["title"],
                 author=book["author"],
                 defaults={
@@ -83,7 +94,7 @@ class Command(BaseCommand):
 
         for book in new_books:
             obj, created = Book.objects.update_or_create(
-                added_by_id=1,
+                added_by=admin_user,
                 title=book["title"],
                 author=book["author"],
                 defaults={
