@@ -51,9 +51,12 @@ class UserAdmin(BaseUserAdmin):
     get_phone.short_description = "Phone"
 
     def get_zcoin(self, obj):
-        balance = obj.wallet.zcoin_balance if hasattr(obj, 'wallet') else 0
-        return format_html('Ⓩ <strong style="color:#2e8b57">{}</strong>', balance)
+        try:
+            return f"Ⓩ {obj.wallet.zcoin_balance}"
+        except (Wallet.DoesNotExist, AttributeError):
+            return "Ⓩ 0.00 (no wallet)"
     get_zcoin.short_description = "ZCoin Balance"
+    get_zcoin.admin_order_field = 'wallet__zcoin_balance'
 
 # Unregister old, register new
 admin.site.unregister(User)
