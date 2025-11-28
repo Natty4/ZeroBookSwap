@@ -4,7 +4,8 @@ from django.core.validators import MinValueValidator
 from decimal import Decimal
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    # user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True, related_name='profile')
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -13,7 +14,8 @@ class UserProfile(models.Model):
         return f"{self.user.username}'s Profile"
 
 class Wallet(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    # user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True, related_name='wallet')
     zcoin_balance = models.DecimalField(
         max_digits=15, 
         decimal_places=2, 
