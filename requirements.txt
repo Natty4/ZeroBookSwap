@@ -8,5 +8,5 @@ tzdata
 psycopg2
 gunicorn
 requests
-
+beautifulsoup4
 
