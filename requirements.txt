@@ -1,0 +1,12 @@
+Django
+django-cors-headers
+djangorestframework
+pillow
+python-dotenv
+sqlparse
+tzdata
+psycopg2
+gunicorn
+requests
+
+
