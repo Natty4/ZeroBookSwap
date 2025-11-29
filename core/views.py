@@ -200,7 +200,7 @@ class PaymentVerificationView(APIView):
             return Response({'error': 'Either coin_package_id or custom_amount is required'}, status=400)
 
         
-        verifier = TelebirrVerifier(mock_mode=False)  # Set True only in dev
+        verifier = TelebirrVerifier(mock_mode=True)  # Set True only in dev
         receipt = verifier.verify(reference_number)
 
         if not receipt:
