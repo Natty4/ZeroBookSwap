@@ -138,11 +138,11 @@ class CreatePaymentView(APIView):
 
             instructions = {
                     'telebirr': {
-                        'number': '+251234567890',
+                        'number': '+251901758052',
                         'amount': 'amount_birr', # For clarity, keep amount separate if possible
                         'note_info': 'request.user.username',
                         'steps': [
-                            f"Send {amount_birr} Birr to +251234567890.",
+                            f"Send {amount_birr} Birr to +251901758052.",
                             f"Write your username '{request.user.username}' in the note.",
                             "Copy & paste the reference number below."
                         ]
