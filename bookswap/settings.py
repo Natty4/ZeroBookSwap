@@ -129,9 +129,24 @@ REST_FRAMEWORK = {
 # Allow credentials (cookies, session, CSRF token)
 CORS_ALLOW_CREDENTIALS = True
 
-# In development: allow EVERYTHING (you had this line but it was overridden!)
+# --- Cookie Security Settings ---
 if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True          # This overrides CORS_ALLOWED_ORIGINS
+    # Local (HTTP) Development Settings
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False
+else:
+    # Deployed (HTTPS) Production Settings
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+
+# Common Cookie Settings
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = True # Recommended to be True for extra security
+
+# --- CORS Settings ---
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
 else:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",
@@ -140,6 +155,7 @@ else:
         "http://127.0.0.1:8000",
         "http://localhost:8001",           # Your frontend port
         "http://127.0.0.1:8001",
+        "https://zerobookswap.onrender.com",
         "https://zero-com.netlify.app",
     ]
 
@@ -151,15 +167,10 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8001",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://zerobookswap.onrender.com",
     "https://zero-com.netlify.app",
 ]
 
-# Cookie settings for development
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = False
 
 # Optional: Allow extra headers
 CORS_ALLOW_HEADERS = [
