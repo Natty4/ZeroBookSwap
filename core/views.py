@@ -25,7 +25,7 @@ from .serializers import (
     CoinPackageSerializer, PaymentSerializer, TransactionSerializer, 
     ZCoinCalculatorSerializer
 )
-from .utils import TelebirrVerifier
+from .utils import TelebirrVerifier, AbyssiniaVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -109,171 +109,172 @@ class UserLogoutView(APIView):
         return response
 
 
-@method_decorator(csrf_protect, name='dispatch')
 class CreatePaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         coin_package_id = request.data.get('coin_package_id')
         custom_amount = request.data.get('custom_amount')
+        payment_method = request.data.get('payment_method', 'telebirr')
+
+        if payment_method not in ['telebirr', 'abyssinia']:
+            return Response({'error': 'Invalid payment method'}, status=400)
 
         if not coin_package_id and not custom_amount:
-            return Response(
-                {'error': 'Either coin_package_id or custom_amount is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Package or amount required'}, status=400)
 
         try:
             if coin_package_id:
-                coin_package = CoinPackage.objects.get(id=coin_package_id, is_active=True)
-                amount_birr = coin_package.price_birr
-                zcoin_amount = coin_package.zcoin_amount
-                package_name = coin_package.name
+                package = CoinPackage.objects.get(id=coin_package_id, is_active=True)
+                amount_birr = package.price_birr
+                zcoin_amount = package.zcoin_amount
+                name = package.name
             else:
                 amount_birr = Decimal(custom_amount)
                 if amount_birr < 10:
-                    return Response({'error': 'Minimum payment amount is 10 Birr'}, status=400)
+                    return Response({'error': 'Minimum 10 Birr'}, status=400)
                 zcoin_amount = amount_birr * Decimal('100')
-                package_name = f"Custom {amount_birr} Birr"
+                name = f"Custom {amount_birr} Birr"
+
+            instructions = {
+                    'telebirr': {
+                        'number': '+251234567890',
+                        'amount': 'amount_birr', # For clarity, keep amount separate if possible
+                        'note_info': 'request.user.username',
+                        'steps': [
+                            f"Send {amount_birr} Birr to +251234567890.",
+                            f"Write your username '{request.user.username}' in the note.",
+                            "Copy & paste the reference number below."
+                        ]
+                    },
+                    'abyssinia': {
+                        'account_name': 'Zero Book Swap PLC',
+                        'source_account_suffix': '12345', # Renamed key for clarity
+                        'amount': 'amount_birr',
+                        'narrative_info': 'request.user.username.upper()',
+                        'steps': [
+                            f"Transfer {amount_birr} Birr to Zero Book Swap PLC.",
+                            f"Use '{request.user.username.upper()}' as the narrative/reason.",
+                            "Copy & paste the transaction reference + the last 5 digits of your source account (****12345) below."
+                        ]
+                    }
+                }
 
             return Response({
                 'success': True,
                 'amount_birr': float(amount_birr),
                 'zcoin_amount': float(zcoin_amount),
-                'package_name': package_name,
-                'payment_instructions': {
-                    'telebirr_number': '+251901758052',
-                    'amount': float(amount_birr),
-                    'note_instructions': f"Include your username '{request.user.username}' in the note",
-                    'steps': [
-                        "Open Telebirr app",
-                        f"Send exactly {amount_birr} Birr to +251901758052",
-                        f"Write your username '{request.user.username}' in the note",
-                        "Copy the reference number",
-                        "Come back here and paste it"
-                    ]
-                }
+                'package_name': name,
+                'payment_method': payment_method,
+                'instructions': instructions[payment_method]
             })
 
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
 
-
-@method_decorator(csrf_protect, name='dispatch')
 class PaymentVerificationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        reference_number = request.data.get('reference_number', '').strip()
+        ref = request.data.get('reference_number', '').strip()
+        suffix = request.data.get('account_suffix', '').strip()
+        method = request.data.get('payment_method', 'telebirr')
         coin_package_id = request.data.get('coin_package_id')
         custom_amount = request.data.get('custom_amount')
 
-        if not reference_number:
-            return Response({'error': 'Reference number is required'}, status=400)
+        if not ref:
+            return Response({'error': 'Reference required'}, status=400)
 
-        # Prevent duplicate use
-        if Payment.objects.filter(reference_number=reference_number).exists():
-            return Response({
-                'error': 'This reference number has already been used.'
-            }, status=400)
+        full_ref = f"{ref}{suffix}" if method == 'abyssinia' else ref
+        if Payment.objects.filter(reference_number=full_ref).exists():
+            return Response({'error': 'Already used'}, status=400)
 
-        # === Determine expected amount & ZCoin reward ===
+        # Determine expected amount
         if coin_package_id:
-            try:
-                package = CoinPackage.objects.get(id=coin_package_id, is_active=True)
-                expected_amount = package.price_birr
-                zcoin_to_add = package.zcoin_amount
-            except CoinPackage.DoesNotExist:
-                return Response({'error': 'Invalid or inactive package'}, status=400)
-
-        elif custom_amount:
-            try:
-                expected_amount = Decimal(str(custom_amount))
-                if expected_amount < Decimal('10'):
-                    return Response({'error': 'Minimum top-up is 10 Birr'}, status=400)
-                zcoin_to_add = expected_amount * settings.ZCOIN_PRICE_PER_BIRR
-            except (ValueError, TypeError, Decimal.InvalidOperation):
-                return Response({'error': 'Invalid custom amount'}, status=400)
-
+            package = CoinPackage.objects.get(id=coin_package_id)
+            expected = package.price_birr
+            zcoin = package.zcoin_amount
         else:
-            return Response({'error': 'Either coin_package_id or custom_amount is required'}, status=400)
+            expected = Decimal(custom_amount or '0')
+            zcoin = expected * Decimal('100')
 
-        
-        verifier = TelebirrVerifier(mock_mode=True)  # Set True only in dev
-        receipt = verifier.verify(reference_number)
+        paid_amount = None
+        payer_name = None
 
-        if not receipt:
-            return Response({
-                'error': 'Payment not found or invalid reference.',
-                'suggestions': [
-                    'Double-check the reference number',
-                    'Wait 2–3 minutes after payment',
-                    'For testing: use any reference starting with "TEST"'
-                ]
-            }, status=400)
+        if method == 'telebirr':
+            verifier = TelebirrVerifier(mock_mode=True)
+            receipt = verifier.verify(ref)
+            if not receipt:
+                return Response({'error': 'Telebirr payment not found'}, status=400)
+            amount_str = receipt.settled_amount or receipt.total_paid_amount
+            match = re.search(r'[\d.]+', amount_str.replace(',', ''))
+            paid_amount = Decimal(match.group()) if match else None
+            payer_name = receipt.payer_name
 
-        
-        amount_str = receipt.settled_amount or receipt.total_paid_amount or ""
-        try:
-            paid_amount = Decimal(re.search(r'([\d.]+)', amount_str.replace(',', '')).group(1))
-        except (AttributeError, Decimal.InvalidOperation):
-            return Response({'error': 'Could not read payment amount from receipt'}, status=400)
+        elif method == 'abyssinia':
+            if not suffix or len(suffix) != 5 or not suffix.isdigit():
+                return Response({'error': 'Enter last 5 digits (e.g. 90172)'}, status=400)
+            
+            verifier = AbyssiniaVerifier(mock_mode=True)  # ← Clean & reusable
+            receipt = verifier.verify(ref, suffix)
+            
+            if not receipt or not receipt.success:
+                return Response({'error': receipt.error or 'Invalid BoA reference'}, status=400)
+            
+            paid_amount = receipt.amount
+            payer_name = receipt.payer_name or "BoA Customer"
 
-        # === Amount tolerance: allow ±0.50 Birr difference due to service fee rounding ===
-        tolerance = Decimal('0.50')
-        if not (expected_amount - tolerance <= paid_amount <= expected_amount + tolerance):
-            return Response({
-                'error': f'Amount mismatch. Expected ~{expected_amount} Birr, received {paid_amount} Birr.',
-                'received_amount': str(paid_amount),
-                'expected_amount': str(expected_amount)
-            }, status=400)
+        # Amount tolerance ±0.50
+        # if abs(paid_amount - expected) > Decimal('0.50'):
+        #     return Response({
+        #         'error': f'Amount mismatch: Expected {expected}, got {paid_amount}',
+        #         'expected': str(expected),
+        #         'received': str(paid_amount)
+        #     }, status=400)
 
-        # === SUCCESS: Create payment & credit ZCoin ===
-        try:
-            with transaction.atomic():
-                payment = Payment.objects.create(
-                    user=request.user,
-                    coin_package_id=coin_package_id or None,
-                    amount_birr=expected_amount,
-                    actual_amount_birr=paid_amount,
-                    zcoin_amount=zcoin_to_add,
-                    payment_method='telebirr',
-                    reference_number=reference_number,
-                    receipt_no=receipt.receipt_no,
-                    payer_name=receipt.payer_name,
-                    payer_phone=receipt.payer_telebirr_no,
-                    status='verified',
-                    verified_at=timezone.now()
-                )
-
-                wallet = Wallet.get_or_create_for_user(request.user)
-                wallet.zcoin_balance += zcoin_to_add
-                wallet.save()
-
-                Transaction.objects.create(
-                    user=request.user,
-                    transaction_type='topup',
-                    amount=zcoin_to_add,
-                    description=f"Telebirr top-up • {reference_number} • {paid_amount} Birr",
-                    related_payment=payment
-                )
-
-        except Exception as e:
-            logger.error(f"Failed to save payment for {reference_number}: {e}")
-            return Response({'error': 'Payment verified but failed to credit ZCoin. Contact support.'}, status=500)
-
-        # Optional: rotate_token(request)  # if you use token rotation
+        # Success: Credit ZCoin
+        with transaction.atomic():
+            payment = Payment.objects.create(
+                user=request.user,
+                coin_package_id=coin_package_id or None,
+                amount_birr=expected,
+                actual_amount_birr=paid_amount,
+                zcoin_amount=zcoin,
+                payment_method=method,
+                reference_number=full_ref,
+                receipt_no=ref,
+                payer_name=payer_name,
+                status='verified',
+                verified_at=timezone.now()
+            )
+            wallet = Wallet.get_or_create_for_user(request.user)
+            wallet.zcoin_balance += zcoin
+            wallet.save()
 
         return Response({
-            'message': 'Payment verified successfully!',
-            'zcoin_added': float(zcoin_to_add),
+            'message': 'Success!',
+            'zcoin_added': float(zcoin),
             'amount_paid_birr': str(paid_amount),
             'new_balance': float(wallet.zcoin_balance),
-            'receipt_no': receipt.receipt_no,
-            'payer': receipt.payer_name,
-            'reference': reference_number
-        }, status=200)
+            'method': 'Telebirr' if method == 'telebirr' else 'Bank of Abyssinia'
+        })
+        
+class PaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return Payment.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        coin_package = CoinPackage.objects.get(id=self.request.data['coin_package'])
+        
+        payment = serializer.save(
+            user=self.request.user,
+            amount_birr=coin_package.price_birr,
+            zcoin_amount=coin_package.zcoin_amount
+        )
 
 @method_decorator(csrf_protect, name='dispatch')
 class SessionCheckView(APIView):
@@ -415,23 +416,6 @@ class CoinPackageViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         return CoinPackage.objects.filter(is_active=True)
-
-class PaymentViewSet(viewsets.ModelViewSet):
-    serializer_class = PaymentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        return Payment.objects.filter(user=self.request.user)
-    
-    def perform_create(self, serializer):
-        coin_package = CoinPackage.objects.get(id=self.request.data['coin_package'])
-        
-        payment = serializer.save(
-            user=self.request.user,
-            amount_birr=coin_package.price_birr,
-            zcoin_amount=coin_package.zcoin_amount
-        )
-
 
 class ZCoinCalculatorView(APIView):
     permission_classes = [permissions.IsAuthenticated]

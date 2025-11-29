@@ -137,6 +137,7 @@ class CoinPackage(models.Model):
 class Payment(models.Model):
     PAYMENT_METHODS = [
         ('telebirr', 'Telebirr'),
+        ('abyssinia', 'Bank of Abyssinia'),
         ('bank', 'Bank Transfer'),
         ('cash', 'Cash'),
     ]

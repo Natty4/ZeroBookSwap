@@ -125,17 +125,33 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
-CORS_ALLOW_ALL_ORIGINS = True  # Only for development
+# CORS_ALLOW_ALL_ORIGINS = True  # Only for development
 CORS_ALLOW_CREDENTIALS = True
 
 # For production, specify allowed origins:
-# CORS_ALLOWED_ORIGINS = [
-#     "https://yourdomain.com",
-#     "https://yourapp.com",
-# ]
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8001",           # CRITICAL: Add your frontend port
+    "http://127.0.0.1:8001",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://zerobookswap.onrender.com",
+    "https://zero-com.netlify.app",
+    
+]
 
-# Or allow specific patterns (useful for Telegram Mini Apps):
-CORS_ALLOW_ALL_ORIGINS = True  # Remove this in production
+
+# CSRF must trust your frontend origins
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8001",           # CRITICAL: Add your frontend port
+    "http://127.0.0.1:8001",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://zero-com.netlify.app",
+]
 
 # Additional CORS settings
 CORS_ALLOW_METHODS = [
