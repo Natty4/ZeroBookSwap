@@ -125,54 +125,28 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
-
-# Allow credentials (cookies, session, CSRF token)
+CORS_ALLOW_ALL_ORIGINS = True  # Only for development
 CORS_ALLOW_CREDENTIALS = True
 
-# --- Cookie Security Settings ---
-if DEBUG:
-    # Local (HTTP) Development Settings
-    CSRF_COOKIE_SECURE = False
-    SESSION_COOKIE_SECURE = False
-else:
-    # Deployed (HTTPS) Production Settings
-    CSRF_COOKIE_SECURE = True
-    SESSION_COOKIE_SECURE = True
+# For production, specify allowed origins:
+# CORS_ALLOWED_ORIGINS = [
+#     "https://yourdomain.com",
+#     "https://yourapp.com",
+# ]
 
-# Common Cookie Settings
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = True # Recommended to be True for extra security
+# Or allow specific patterns (useful for Telegram Mini Apps):
+CORS_ALLOW_ALL_ORIGINS = True  # Remove this in production
 
-# --- CORS Settings ---
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:8001",           # Your frontend port
-        "http://127.0.0.1:8001",
-        "https://zerobookswap.onrender.com",
-        "https://zero-com.netlify.app",
-    ]
-
-# CSRF must trust your frontend origins
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:8001",               # CRITICAL: Add your frontend port
-    "http://127.0.0.1:8001",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://zerobookswap.onrender.com",
-    "https://zero-com.netlify.app",
+# Additional CORS settings
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
-
-# Optional: Allow extra headers
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -182,7 +156,6 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'user-agent',
     'x-csrftoken',
-    'X-CSRFtoken',
     'x-requested-with',
 ]
 
