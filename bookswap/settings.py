@@ -134,6 +134,7 @@ if not DEBUG:
     CSRF_TRUSTED_ORIGINS = [
         "https://frontxt.app", 
         "https://zero-com.netlify.app",
+        "https://zerobookswap.onrender.com",
     ]
     
     SECURE_SSL_REDIRECT = True
