@@ -33,6 +33,8 @@ class Command(BaseCommand):
             {'name': 'Standard Pack', 'zcoin_amount': 5000,  'price_birr': 45},
             {'name': 'Premium Pack',  'zcoin_amount': 10000, 'price_birr': 80},
             {'name': 'Mega Pack',     'zcoin_amount': 25000, 'price_birr': 180},
+            {'name': 'Ultra Pack',     'zcoin_amount': 50000, 'price_birr': 300},
+            {'name': 'Giga Pack',     'zcoin_amount': 100000, 'price_birr': 500},
         ]
 
         for pkg_data in packages:
