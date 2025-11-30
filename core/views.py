@@ -49,6 +49,9 @@ class UserRegistrationView(APIView):
             
             # Return user data with profile
             profile_serializer = UserProfileSerializer(user.profile)
+            wallet = Wallet.get_or_create_for_user(user)
+            wallet.zcoin_balance += 10
+            wallet.save()
             return Response({
                 'message': 'User registered successfully',
                 'user': profile_serializer.data
