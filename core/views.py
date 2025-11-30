@@ -363,7 +363,7 @@ class BookViewSet(viewsets.ModelViewSet):
 
 class SwapRequestViewSet(viewsets.ModelViewSet):
     serializer_class = SwapRequestSerializer
-    permission_classes = [permissions.IsAuthenticated]  # This is correct for POST
+    permission_classes = [permissions.AllowAny]  # This is correct for POST
 
     def get_queryset(self):
         # Only return user's own requests — but safely handle unauthenticated
