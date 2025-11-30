@@ -125,48 +125,65 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
-if not DEBUG:
-    # Production settings
-    CORS_ALLOWED_ORIGINS = [
-        "https://zero-com.netlify.app",
-    ]
-    CSRF_TRUSTED_ORIGINS = [ 
-        "https://zero-com.netlify.app",
-        "https://zerobookswap.onrender.com",
-    ]
-    
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SAMESITE = 'None'  # Required for cross-site
-    CSRF_COOKIE_SAMESITE = 'None'     # Required for cross-site
-    SESSION_COOKIE_SECURE = True      # Required for SameSite=None
-    CSRF_COOKIE_SECURE = True         # Required for SameSite=None
-    CSRF_COOKIE_HTTPONLY = False      # Allow JavaScript to read CSRF token
-    SESSION_COOKIE_DOMAIN = None
-    CSRF_COOKIE_DOMAIN = None
-    
-else:
-    # Development settings
+
+# For development, allow common origins
+if DEBUG:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:8001",
         "http://127.0.0.1:8001",
         "http://localhost:3000",
-        "https://zero-com.netlify.app",
-        "https://zerobookswap.onrender.com",
+        "http://localhost:8080",
     ]
     CSRF_TRUSTED_ORIGINS = [
         "http://localhost:8001",
         "http://127.0.0.1:8001", 
         "http://localhost:3000",
+        "http://localhost:8080",
+    ]
+else:
+    # Production - only allow your actual frontend domains
+    CORS_ALLOWED_ORIGINS = [
+        "https://zero-com.netlify.app",
+        "https://zerobookswap.onrender.com",  # Allow backend itself if needed
+    ]
+    CSRF_TRUSTED_ORIGINS = [
         "https://zero-com.netlify.app",
         "https://zerobookswap.onrender.com",
     ]
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    CSRF_COOKIE_SAMESITE = 'Lax'
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SECURE = False
-    SESSION_COOKIE_DOMAIN = None
-    CSRF_COOKIE_DOMAIN = None
+
+# THESE SETTINGS ARE CRITICAL AND WORK FOR BOTH ENVIRONMENTS:
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # Always False for security
+
+# Cookie settings that work for both dev and prod
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG  
+CSRF_COOKIE_SECURE = not DEBUG    
+CSRF_COOKIE_HTTPONLY = False      
+SESSION_COOKIE_DOMAIN = None      
+CSRF_COOKIE_DOMAIN = None         
+
+# Security settings for production only
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# CORS headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Optional: Expose CSRF token in headers
+CORS_EXPOSE_HEADERS = ['X-CSRFToken']
     
 # Custom settings
 ZCOIN_PRICE_PER_BIRR = os.getenv('ZCOIN_PRICE_PER_BIRR', 100)

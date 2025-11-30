@@ -31,18 +31,15 @@ logger = logging.getLogger(__name__)
 
 
 
-# Add this decorator to views that need CSRF protection
-
 class CSRFView(APIView):
     permission_classes = [permissions.AllowAny]
     
     @method_decorator(ensure_csrf_cookie)
     def get(self, request):
-        response = JsonResponse({'CSRFToken': get_token(request)})
-        # Add CORS headers for production
-        response["Access-Control-Allow-Origin"] = "https://zero-com.netlify.app"  # Your frontend domain
-        response["Access-Control-Allow-Credentials"] = "true"
-        return response
+        return Response({
+            'CSRFToken': get_token(request),
+            'message': 'CSRF token set successfully'
+        })
 
 class UserRegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -183,7 +180,7 @@ class CreatePaymentView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
-
+@method_decorator(csrf_protect, name='dispatch')
 class PaymentVerificationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
