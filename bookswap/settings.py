@@ -125,57 +125,45 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
-# CORS_ALLOW_ALL_ORIGINS = True  # Only for development
-CORS_ALLOW_CREDENTIALS = DEBUG
-
-# For production, specify allowed origins:
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:8001",           # CRITICAL: Add your frontend port
-    "http://127.0.0.1:8001",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://zerobookswap.onrender.com",
-    "https://zero-com.netlify.app",
+if not DEBUG:
+    # Production settings
+    CORS_ALLOWED_ORIGINS = [
+        "https://frontxt.app",
+        "https://zero-com.netlify.app",
+    ]
+    CSRF_TRUSTED_ORIGINS = [
+        "https://frontxt.app", 
+        "https://zero-com.netlify.app",
+    ]
     
-]
-
-
-# CSRF must trust your frontend origins
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:8001",           # CRITICAL: Add your frontend port
-    "http://127.0.0.1:8001",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://zerobookswap.onrender.com",
-    "https://zero-com.netlify.app",
-]
-
-# Additional CORS settings
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SAMESITE = 'None'  # Required for cross-site
+    CSRF_COOKIE_SAMESITE = 'None'     # Required for cross-site
+    SESSION_COOKIE_SECURE = True      # Required for SameSite=None
+    CSRF_COOKIE_SECURE = True         # Required for SameSite=None
+    CSRF_COOKIE_HTTPONLY = False      # Allow JavaScript to read CSRF token
+    SESSION_COOKIE_DOMAIN = '.zerobookswap.onrender.com'  # Your backend domain
+    CSRF_COOKIE_DOMAIN = '.zerobookswap.onrender.com'     # Your backend domain
+    
+else:
+    # Development settings
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
+        "http://localhost:3000",
+    ]
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:8001",
+        "http://127.0.0.1:8001", 
+        "http://localhost:3000",
+    ]
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    
+    
 # Custom settings
 ZCOIN_PRICE_PER_BIRR = os.getenv('ZCOIN_PRICE_PER_BIRR', 100)
 SWAP_FEE = os.getenv('SWAP_FEE', 25)
