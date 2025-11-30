@@ -128,11 +128,9 @@ REST_FRAMEWORK = {
 if not DEBUG:
     # Production settings
     CORS_ALLOWED_ORIGINS = [
-        "https://frontxt.app",
         "https://zero-com.netlify.app",
     ]
-    CSRF_TRUSTED_ORIGINS = [
-        "https://frontxt.app", 
+    CSRF_TRUSTED_ORIGINS = [ 
         "https://zero-com.netlify.app",
         "https://zerobookswap.onrender.com",
     ]
@@ -153,11 +151,15 @@ else:
         "http://localhost:8001",
         "http://127.0.0.1:8001",
         "http://localhost:3000",
+        "https://zero-com.netlify.app",
+        "https://zerobookswap.onrender.com",
     ]
     CSRF_TRUSTED_ORIGINS = [
         "http://localhost:8001",
         "http://127.0.0.1:8001", 
         "http://localhost:3000",
+        "https://zero-com.netlify.app",
+        "https://zerobookswap.onrender.com",
     ]
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SAMESITE = 'Lax'
