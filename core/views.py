@@ -276,16 +276,30 @@ class PaymentViewSet(viewsets.ModelViewSet):
             zcoin_amount=coin_package.zcoin_amount
         )
 
-@method_decorator(csrf_protect, name='dispatch')
 class SessionCheckView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
+    permission_classes = [permissions.AllowAny]  # Change to AllowAny
+    
     def get(self, request):
-        rotate_token(request)
-        return Response({
-            'is_authenticated': True,
-            'user': UserProfileSerializer(request.user.profile).data
-        })
+        if request.user.is_authenticated:
+            return Response({
+                'is_authenticated': True,
+                'user': UserProfileSerializer(request.user.profile).data
+            })
+        else:
+            return Response({
+                'is_authenticated': False
+            })
+            
+# @method_decorator(csrf_protect, name='dispatch')
+# class SessionCheckView(APIView):
+#     permission_classes = [permissions.AllowAny]
+
+#     def get(self, request):
+#         rotate_token(request)
+#         return Response({
+#             'is_authenticated': True,
+#             'user': UserProfileSerializer(request.user.profile).data
+#         })
 
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
