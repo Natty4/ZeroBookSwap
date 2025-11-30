@@ -113,7 +113,7 @@ class UserLogoutView(APIView):
 
 
 class CreatePaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         coin_package_id = request.data.get('coin_package_id')
