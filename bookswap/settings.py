@@ -126,7 +126,7 @@ REST_FRAMEWORK = {
 }
 
 # CORS_ALLOW_ALL_ORIGINS = True  # Only for development
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = DEBUG
 
 # For production, specify allowed origins:
 CORS_ALLOWED_ORIGINS = [
