@@ -143,8 +143,8 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True      # Required for SameSite=None
     CSRF_COOKIE_SECURE = True         # Required for SameSite=None
     CSRF_COOKIE_HTTPONLY = False      # Allow JavaScript to read CSRF token
-    SESSION_COOKIE_DOMAIN = '.zerobookswap.onrender.com'  # Your backend domain
-    CSRF_COOKIE_DOMAIN = '.zerobookswap.onrender.com'     # Your backend domain
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_DOMAIN = None
     
 else:
     # Development settings
@@ -162,7 +162,8 @@ else:
     CSRF_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-    
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_DOMAIN = None
     
 # Custom settings
 ZCOIN_PRICE_PER_BIRR = os.getenv('ZCOIN_PRICE_PER_BIRR', 100)
