@@ -25,7 +25,7 @@ from .serializers import (
     CoinPackageSerializer, PaymentSerializer, TransactionSerializer, 
     ZCoinCalculatorSerializer
 )
-from .utils import TelebirrVerifier, AbyssiniaVerifier
+from .utils.payment_verification import TelebirrVerifier, AbyssiniaVerifier
 
 logger = logging.getLogger(__name__)
 

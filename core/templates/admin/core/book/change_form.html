@@ -1,0 +1,60 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+<script>
+$(document).ready(function() {
+    // Add calculator button
+    $('.submit-row').prepend(
+        '<input type="button" value="Calculate ZCoin" class="default" id="calculate-zcoin-btn" style="margin-right: 10px;">'
+    );
+    
+    $('#calculate-zcoin-btn').click(function() {
+        const bookId = window.location.pathname.split('/').slice(-2, -1)[0];
+        if (bookId && !isNaN(bookId)) {
+            window.location.href = `calculate/`;
+        } else {
+            alert('Cannot calculate for new book. Please save first.');
+        }
+    });
+    
+    // Auto-calculate when relevant fields change
+    $('#id_genre, #id_condition').change(function() {
+        if ($('#id_zcoin_value').val() === '' || confirm('Recalculate ZCoin based on new values?')) {
+            const bookId = window.location.pathname.split('/').slice(-2, -1)[0];
+            if (bookId && !isNaN(bookId)) {
+                fetch(`calculate/`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        location.reload();
+                    }
+                });
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
+
+{% block object-tools-items %}
+{{ block.super }}
+<li>
+    <a href="{% url 'admin:book_calculate_zcoin' %}" class="historylink">
+        <i class="icon-calculator"></i> ZCoin Calculator
+    </a>
+</li>
+<li>
+    {% if original.pk %}
+    <a href="{% url 'admin:book_calculate_book_zcoin' original.pk %}" class="historylink">
+        <i class="icon-calc"></i> Calculate for this Book
+    </a>
+    {% endif %}
+</li>
+{% endblock %}
