@@ -2,6 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     BookViewSet,
+    CommodityViewSet,
+    CommodityPurchaseViewSet,
     SwapRequestViewSet,
     CoinPackageViewSet,
     PaymentViewSet,
@@ -20,6 +22,8 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'books', BookViewSet, basename='book')
+router.register(r'commodities', CommodityViewSet, basename='commodity')
+router.register(r'commodity-purchases', CommodityPurchaseViewSet, basename='commoditypurchase')
 router.register(r'swap-requests', SwapRequestViewSet, basename='swaprequest')
 router.register(r'coin-packages', CoinPackageViewSet, basename='coins')
 router.register(r'payment', PaymentViewSet, basename='payment')

@@ -1,173 +1,100 @@
 {% extends "admin/base_site.html" %}
-{% load i18n admin_urls static %}
-
-{% block extrastyle %}
-{{ block.super }}
-<style>
-    .calculator-container {
-        max-width: 800px;
-        margin: 20px auto;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    .form-group {
-        margin-bottom: 20px;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-    }
-    .form-control {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
-    .checkbox-group {
-        display: flex;
-        gap: 20px;
-        flex-wrap: wrap;
-    }
-    .checkbox-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-    .calculator-buttons {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-    }
-    .btn {
-        padding: 10px 20px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-block;
-    }
-    .btn-primary {
-        background: #417690;
-        color: white;
-    }
-    .btn-secondary {
-        background: #6c757d;
-        color: white;
-    }
-    .result-preview {
-        margin-top: 30px;
-        padding: 15px;
-        background: #2f4d6b87
-        border-radius: 4px;
-        display: none;
-    }
-    .result-item {
-        margin: 5px 0;
-    }
-    .result-value {
-        font-weight: bold;
-        color: #417690;
-    }
-</style>
-{% endblock %}
 
 {% block content %}
-<div class="calculator-container">
-    <h1>ZCoin Calculator</h1>
-    <p>Calculate the ZCoin value for a book based on various attributes</p>
+<div style="max-width: 800px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+    <h1 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">ZCoin Calculator</h1>
     
-    <form method="post" id="zcoin-calculator-form">
-        {% csrf_token %}
-        
-        <div class="form-group">
-            <label for="id_category">Category:</label>
-            {{ form.category }}
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+        <div>
+            <form method="post">
+                {% csrf_token %}
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Category</label>
+                    {{ form.category }}
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Condition</label>
+                    {{ form.condition }}
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Cover Type</label>
+                    {{ form.cover_type }}
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px;">Features</label>
+                    <div>
+                        <label>{{ form.has_images }} Has Images</label>
+                    </div>
+                    <div>
+                        <label>{{ form.has_dust_jacket }} Has Dust Jacket</label>
+                    </div>
+                    <div>
+                        <label>{{ form.is_first_edition }} First Edition</label>
+                    </div>
+                    <div>
+                        <label>{{ form.is_signed }} Signed</label>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Manual ZCoin (Optional)</label>
+                    {{ form.manual_zcoin }}
+                </div>
+                
+                <button type="submit" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                    Calculate
+                </button>
+                <a href="../" style="margin-left: 10px; padding: 10px 20px; background: #666; color: white; text-decoration: none; border-radius: 4px;">
+                    Back to Books
+                </a>
+            </form>
         </div>
         
-        <div class="form-group">
-            <label for="id_condition">Condition:</label>
-            {{ form.condition }}
-        </div>
-        
-        <div class="form-group">
-            <label for="id_cover_type">Cover Type:</label>
-            {{ form.cover_type }}
-        </div>
-        
-        <div class="form-group">
-            <label>Additional Attributes:</label>
-            <div class="checkbox-group">
-                <div class="checkbox-item">
-                    {{ form.has_images }}
-                    <label for="id_has_images">Has Images/Illustrations</label>
+        <div>
+            {% if result %}
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                <h3 style="color: #4CAF50; margin-top: 0;">Calculation Result</h3>
+                
+                <div style="background: white; padding: 20px; border-radius: 4px; margin-bottom: 20px;">
+                    <div style="font-size: 32px; font-weight: bold; color: #4CAF50; text-align: center;">
+                        {{ result.zcoin|floatformat:2 }} Z
+                    </div>
+                    <div style="text-align: center; color: #666; margin-top: 10px;">
+                        {{ result.price_birr|floatformat:2 }} Birr
+                    </div>
                 </div>
-                <div class="checkbox-item">
-                    {{ form.has_dust_jacket }}
-                    <label for="id_has_dust_jacket">Has Original Dust Jacket</label>
-                </div>
-                <div class="checkbox-item">
-                    {{ form.is_first_edition }}
-                    <label for="id_is_first_edition">First Edition</label>
-                </div>
-                <div class="checkbox-item">
-                    {{ form.is_signed }}
-                    <label for="id_is_signed">Signed by Author</label>
+                
+                <div style="background: white; padding: 15px; border-radius: 4px;">
+                    <h4 style="margin-top: 0;">Details</h4>
+                    <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee;">
+                        <span>Base Value:</span>
+                        <span>{{ result.base_value|floatformat:2 }} Z</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee;">
+                        <span>Multiplier:</span>
+                        <span>{{ result.multiplier|floatformat:2 }}x</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee;">
+                        <span>Bonuses:</span>
+                        <span>+{{ result.bonuses|floatformat:2 }} Z</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 5px 0; font-weight: bold;">
+                        <span>Final:</span>
+                        <span>{{ result.zcoin|floatformat:2 }} Z</span>
+                    </div>
                 </div>
             </div>
+            {% else %}
+            <div style="background: #f5f5f5; padding: 40px; border-radius: 8px; text-align: center; color: #999;">
+                <h3 style="margin-top: 0;">Ready to Calculate</h3>
+                <p>Fill in the details on the left and click Calculate to see the result here.</p>
+            </div>
+            {% endif %}
         </div>
-        
-        <div class="form-group">
-            <label for="id_manual_zcoin">Manual Override (Optional):</label>
-            {{ form.manual_zcoin }}
-            <small>Enter manual ZCoin value to override calculation</small>
-        </div>
-        
-        <div class="calculator-buttons">
-            <button type="submit" class="btn btn-primary">Calculate ZCoin</button>
-            <a href="{% url 'admin:core_book_changelist' %}" class="btn btn-secondary">Back to Books</a>
-        </div>
-    </form>
-    
-    <div id="result-preview" class="result-preview">
-        <h3>Calculation Result</h3>
-        <div class="result-item">ZCoin Value: <span id="result-zcoin" class="result-value"></span></div>
-        <div class="result-item">Price in Birr: <span id="result-price" class="result-value"></span></div>
-        <div class="result-item">Base Value: <span id="result-base" class="result-value"></span></div>
-        <div class="result-item">Condition Multiplier: <span id="result-multiplier" class="result-value"></span></div>
-        <div class="result-item">Bonuses: <span id="result-bonuses" class="result-value"></span></div>
-        <div class="result-item">Calculation Type: <span id="result-type" class="result-value"></span></div>
     </div>
 </div>
-
-<script>
-document.getElementById('zcoin-calculator-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    
-    fetch('{% url "admin:book_calculate_zcoin" %}', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('result-zcoin').textContent = data.zcoin + ' ZCoin';
-        document.getElementById('result-price').textContent = data.price_birr + ' Birr';
-        document.getElementById('result-base').textContent = data.base_value;
-        document.getElementById('result-multiplier').textContent = data.condition_multiplier;
-        document.getElementById('result-bonuses').textContent = data.bonuses;
-        document.getElementById('result-type').textContent = data.is_manual ? 'Manual Override' : 'Auto-calculated';
-        document.getElementById('result-preview').style.display = 'block';
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error calculating ZCoin. Please try again.');
-    });
-});
-</script>
 {% endblock %}

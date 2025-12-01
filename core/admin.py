@@ -1,4 +1,4 @@
-# admin.py - FINAL VERSION (EVERYTHING INCLUDED)
+# admin.py - UPDATED VERSION WITH COMMODITY AND PURCHASE MODELS
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
@@ -8,6 +8,8 @@ from django.urls import reverse, path
 from django.shortcuts import render, redirect
 from decimal import Decimal
 from django import forms
+from django.db import transaction
+from django.utils import timezone
 from django.utils.html import format_html
 from django.contrib import messages
 from django.http import JsonResponse
@@ -16,6 +18,7 @@ from .models import (
     UserProfile, Wallet, Book, SwapRequest,
     CoinPackage, Payment, Transaction,
     ZCoinCalculatorSettings, ZCoinCalculationLog,
+    Commodity, CommodityPurchase  # ADDED THESE
 )
 
 # ===================================================================
@@ -118,141 +121,107 @@ class WalletAdmin(admin.ModelAdmin):
 # ===================================================================
 # 3. BOOK - FULLY FEATURED
 # ===================================================================
-# @admin.register(Book)
-# class BookAdmin(admin.ModelAdmin):
-#     list_display = ('title', 'author', 'added_by', 'genre', 'condition', 
-#                    'zcoin_value', 'price_birr', 'book_type', 'status_colored', 
-#                    'is_available', 'status', 'created_at')
-#     list_filter = ('book_type', 'genre', 'condition', 'status', 'is_available', 'created_at')
-#     search_fields = ('title', 'author', 'added_by__username', 'added_by__email')
-#     list_editable = ('status', 'is_available', 'zcoin_value', 'price_birr')
-#     readonly_fields = ('created_at', 'updated_at', 'added_by')
-#     date_hierarchy = 'created_at'
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    """Book admin with review workflow"""
+    list_display = ('title', 'author', 'genre', 'status_badge', 
+                   'zcoin_value', 'price_birr', 'added_by', 
+                   'reviewed_by', 'created_at')
+    list_filter = ('status', 'genre', 'created_at')
+    search_fields = ('title', 'author', 'added_by__username')
+    readonly_fields = ('created_at', 'updated_at', 'reviewed_at', 
+                      'approved_at', 'reviewed_by', 'approved_by', 'added_by',
+                      'zcoin_calculator')
+    actions = ['approve_books', 'reject_books', 'calculate_zcoin']
     
-#     # Add status colored display
-#     def status_colored(self, obj):
-#         colors = {
-#             'pending': '#fb923c',  # orange
-#             'approved': '#22c55e', # green
-#             'rejected': '#ef4444', # red
-#         }
-#         return format_html(
-#             '<span style="background:{}; color:white; padding:2px 8px; border-radius:4px;">{}</span>',
-#             colors.get(obj.status, '#666'),
-#             obj.status.replace('_', ' ').title()
-#         )
-#     status_colored.short_description = "Status"
+    def status_badge(self, obj):
+        """Display status with color"""
+        colors = {
+            'pending': 'orange',
+            'reviewed': 'blue',
+            'approved': 'green',
+            'rejected': 'red',
+        }
+        color = colors.get(obj.status, 'gray')
+        return format_html(
+            '<span style="background:{}; color:white; padding:2px 8px; border-radius:10px; font-size:12px;">{}</span>',
+            color, obj.status.upper()
+        )
+    status_badge.short_description = 'Status'
     
-#     # Add custom actions for book approval
-#     actions = ['approve_books', 'reject_books', 'calculate_and_award_zcoin']
+    def zcoin_calculator(self, obj):
+        """Display calculator button"""
+        return format_html(
+            '<a href="calculate/" class="button" style="background:#4CAF50; color:white; padding:8px 16px; border-radius:4px; text-decoration:none;">'
+            'Calculate ZCoin</a>'
+        )
+    zcoin_calculator.short_description = 'Calculator'
     
-#     def approve_books(self, request, queryset):
-#         count = 0
-#         for book in queryset.filter(status='pending'):
-#             # Update book status
-#             book.status = 'approved'
-#             book.is_available = True
-#             book.save()
-            
-#             # Award ZCoin to user
-#             wallet = Wallet.get_or_create_for_user(book.added_by)
-            
-#             # Calculate ZCoin value (use either existing zcoin_value or calculate)
-#             if book.zcoin_value and book.zcoin_value > 0:
-#                 award_amount = book.zcoin_value
-#             else:
-#                 # Calculate based on genre and condition
-#                 zcoin_values = {
-#                     'category': {
-#                         'classics': 30,
-#                         'non-fiction': 25,
-#                         'fiction': 20,
-#                         'contemporary': 15,
-#                     },
-#                     'condition': {
-#                         'excellent': 50,
-#                         'good': 35,
-#                         'fair': 20,
-#                         'poor': 10,
-#                     }
-#                 }
-#                 category_value = zcoin_values['category'].get(book.genre, 15)
-#                 condition_value = zcoin_values['condition'].get(book.condition, 20)
-#                 award_amount = Decimal(category_value + condition_value)
-                
-#                 # Update book's zcoin_value for future reference
-#                 book.zcoin_value = award_amount
-#                 book.save()
-            
-#             # Add to user's wallet
-#             wallet.zcoin_balance += award_amount
-#             wallet.save()
-            
-#             # Create transaction record
-#             Transaction.objects.create(
-#                 user=book.added_by,
-#                 transaction_type='topup',
-#                 amount=award_amount,
-#                 description=f"Book approved: {book.title}",
-#                 related_swap=None
-#             )
-            
-#             count += 1
+    def approve_books(self, request, queryset):
+        """Approve books and award ZCoin (superuser only)"""
+        if not request.user.is_superuser:
+            messages.error(request, 'Only superusers can approve books')
+            return
         
-#         self.message_user(request, f"{count} books approved and ZCoin awarded to users.")
-#     approve_books.short_description = "Approve books & award ZCoin"
-    
-#     def reject_books(self, request, queryset):
-#         count = queryset.filter(status='pending').update(status='rejected')
-#         self.message_user(request, f"{count} books rejected.")
-#     reject_books.short_description = "Reject books"
-    
-#     def calculate_and_award_zcoin(self, request, queryset):
-#         # This action recalculates and awards ZCoin for already approved books
-#         count = 0
-#         for book in queryset.filter(status='approved'):
-#             wallet = Wallet.get_or_create_for_user(book.added_by)
+        count = 0
+        for book in queryset.filter(status='reviewed'):
+            # Award ZCoin
+            wallet = Wallet.get_or_create_for_user(book.added_by)
+            wallet.zcoin_balance += book.zcoin_value
+            wallet.save()
             
-#             # Recalculate ZCoin value
-#             zcoin_values = {
-#                 'category': {
-#                     'classics': 30,
-#                     'non-fiction': 25,
-#                     'fiction': 20,
-#                     'contemporary': 15,
-#                 },
-#                 'condition': {
-#                     'excellent': 50,
-#                     'good': 35,
-#                     'fair': 20,
-#                     'poor': 10,
-#                 }
-#             }
-#             category_value = zcoin_values['category'].get(book.genre, 15)
-#             condition_value = zcoin_values['condition'].get(book.condition, 20)
-#             award_amount = Decimal(category_value + condition_value)
+            # Update book
+            book.status = 'approved'
+            book.is_available = True
+            book.approved_by = request.user
+            book.approved_at = timezone.now()
+            book.save()
             
-#             # Award difference if zcoin_value is different
-#             difference = award_amount - book.zcoin_value
-#             if difference != 0:
-#                 wallet.zcoin_balance += difference
-#                 wallet.save()
-                
-#                 book.zcoin_value = award_amount
-#                 book.save()
-                
-#                 Transaction.objects.create(
-#                     user=book.added_by,
-#                     transaction_type='refund' if difference > 0 else 'topup',
-#                     amount=difference,
-#                     description=f"ZCoin adjustment for: {book.title}",
-#                     related_swap=None
-#                 )
-#                 count += 1
+            # Record transaction
+            Transaction.objects.create(
+                user=book.added_by,
+                transaction_type='topup',
+                amount=book.zcoin_value,
+                description=f'Book approved: {book.title}'
+            )
+            
+            count += 1
         
-#         self.message_user(request, f"ZCoin recalculated for {count} books.")
-#     calculate_and_award_zcoin.short_description = "Recalculate & adjust ZCoin"
-
+        self.message_user(request, f'{count} books approved and ZCoin awarded')
+    approve_books.short_description = 'Approve books & award ZCoin'
+    
+    def reject_books(self, request, queryset):
+        """Reject books (superuser only)"""
+        if not request.user.is_superuser:
+            messages.error(request, 'Only superusers can reject books')
+            return
+        
+        count = queryset.update(status='rejected', is_available=False)
+        self.message_user(request, f'{count} books rejected')
+    reject_books.short_description = 'Reject books'
+    
+    def calculate_zcoin(self, request, queryset):
+        """Calculate ZCoin for selected books"""
+        count = 0
+        for book in queryset:
+            result = ZCoinCalculator.calculate_zcoin(
+                category=book.genre,
+                condition=book.assessed_condition or book.condition,
+                cover_type=book.cover_type,
+                has_images=book.has_images,
+                has_dust_jacket=book.has_dust_jacket,
+                is_first_edition=book.is_first_edition,
+                is_signed=book.is_signed,
+                user=request.user,
+                book=book
+            )
+            book.zcoin_value = Decimal(str(result['zcoin']))
+            book.price_birr = Decimal(str(result['price_birr']))
+            book.save()
+            count += 1
+        
+        self.message_user(request, f'ZCoin calculated for {count} books')
+    calculate_zcoin.short_description = 'Calculate ZCoin'
 
 # ===================================================================
 # 4. SWAP REQUEST - PROFESSIONAL WITH ZCOIN LOGIC
@@ -330,418 +299,480 @@ class TransactionAdmin(admin.ModelAdmin):
     list_filter = ('transaction_type', 'created_at')
     search_fields = ('user__username', 'description')
 
-
-
 # ===================================================================
-# ZCOIN CALCULATOR ADMIN INTERFACE
+# 6. COMMODITY ADMIN
 # ===================================================================
 
-class ZCoinCalculatorForm(forms.Form):
-    """Form for ZCoin calculation in admin"""
-    category = forms.ChoiceField(
-        choices=ZCoinCalculatorSettings.CATEGORIES,
-        initial='fiction'
+@admin.register(Commodity)
+class CommodityAdmin(admin.ModelAdmin):
+    """Admin interface for Commodity items"""
+    list_display = ('name', 'commodity_type_display', 'price_birr', 'zcoin_value', 
+                    'stock_status', 'is_available', 'created_at')
+    list_filter = ('commodity_type', 'is_available', 'created_at')
+    search_fields = ('name', 'description')
+    list_editable = ('is_available', 'price_birr', 'zcoin_value')
+    readonly_fields = ('created_at', 'updated_at', 'stock_status_display')
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'description', 'commodity_type', 'image_url')
+        }),
+        ('Pricing & Inventory', {
+            'fields': ('price_birr', 'zcoin_value', 'stock_quantity', 'is_available')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'stock_status_display')
+        }),
     )
-    condition = forms.ChoiceField(
-        choices=ZCoinCalculatorSettings.CONDITION_MULTIPLIERS,
-        initial='good'
+    actions = ['restock_items', 'toggle_availability', 'update_zcoin_from_price']
+    
+    def commodity_type_display(self, obj):
+        """Display commodity type with icon"""
+        icons = {
+            'stationery': '📝',
+            'book_accessory': '🎀',
+            'reading_aid': '🔍',
+            'gift': '🎁',
+        }
+        icon = icons.get(obj.commodity_type, '📦')
+        return format_html(
+            '<span style="display: flex; align-items: center; gap: 5px;">'
+            '{} {}</span>',
+            icon, obj.get_commodity_type_display()
+        )
+    commodity_type_display.short_description = 'Type'
+    
+    def stock_status(self, obj):
+        """Display stock status with color coding"""
+        if obj.stock_quantity == 0:
+            return format_html(
+                '<span style="background:#ef4444; color:white; padding:2px 8px; border-radius:10px; font-size:11px;">'
+                'OUT OF STOCK</span>'
+            )
+        elif obj.stock_quantity <= 10:
+            return format_html(
+                '<span style="background:#fb923c; color:white; padding:2px 8px; border-radius:10px; font-size:11px;">'
+                'LOW-<strong>{}</strong></span>', obj.stock_quantity
+            )
+        else:
+            return format_html(
+                '<span style="background:#22c55e; color:white; padding:2px 8px; border-radius:10px; font-size:11px;">'
+                'INSTOCK-<strong>{}</strong></span>', obj.stock_quantity
+            )
+    stock_status.short_description = 'Stock'
+    
+    def stock_status_display(self, obj):
+        """Detailed stock status for readonly field"""
+        if obj.stock_quantity == 0:
+            return "❌ Out of Stock"
+        elif obj.stock_quantity <= 5:
+            return f"⚠️ Low Stock: {obj.stock_quantity} units remaining"
+        elif obj.stock_quantity <= 10:
+            return f"📦 Moderate Stock: {obj.stock_quantity} units"
+        else:
+            return f"✅ Good Stock: {obj.stock_quantity} units"
+    stock_status_display.short_description = 'Current Stock Status'
+    
+    def restock_items(self, request, queryset):
+        """Restock selected commodities"""
+        for commodity in queryset:
+            commodity.stock_quantity += 10  # Add 10 units
+            commodity.is_available = True
+            commodity.save()
+        
+        self.message_user(request, f"Restocked {queryset.count()} commodities (+10 units each)")
+    restock_items.short_description = "Restock (+10 units)"
+    
+    def toggle_availability(self, request, queryset):
+        """Toggle availability of selected commodities"""
+        for commodity in queryset:
+            commodity.is_available = not commodity.is_available
+            commodity.save()
+        
+        self.message_user(request, f"Toggled availability for {queryset.count()} commodities")
+    toggle_availability.short_description = "Toggle Availability"
+    
+    def update_zcoin_from_price(self, request, queryset):
+        """Update ZCoin values based on price (100 ZCoin = 1 Birr)"""
+        updated = 0
+        for commodity in queryset:
+            # Convert price_birr to ZCoin (100 ZCoin per 1 Birr)
+            new_zcoin = commodity.price_birr * 100
+            if commodity.zcoin_value != new_zcoin:
+                commodity.zcoin_value = new_zcoin
+                commodity.save()
+                updated += 1
+        
+        if updated:
+            self.message_user(request, f"Updated ZCoin values for {updated} commodities")
+        else:
+            self.message_user(request, "No ZCoin values needed updating")
+    update_zcoin_from_price.short_description = "Update ZCoin from Price"
+
+# ===================================================================
+# 7. COMMODITY PURCHASE ADMIN
+# ===================================================================
+
+class CommodityPurchaseStatusFilter(admin.SimpleListFilter):
+    """Custom filter for purchase status"""
+    title = 'Purchase Status'
+    parameter_name = 'status_group'
+    
+    def lookups(self, request, model_admin):
+        return (
+            ('active', 'Active Orders'),
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('cancelled', 'Cancelled'),
+        )
+    
+    def queryset(self, request, queryset):
+        if self.value() == 'active':
+            return queryset.filter(status__in=['pending', 'processing'])
+        elif self.value():
+            return queryset.filter(status=self.value())
+        return queryset
+
+@admin.register(CommodityPurchase)
+class CommodityPurchaseAdmin(admin.ModelAdmin):
+    """Admin interface for Commodity Purchases"""
+    list_display = ('purchase_id', 'user_link', 'commodity_link', 'quantity', 
+                    'total_zcoin_display', 'status_badge', 'created_at', 'delivery_info')
+    list_filter = (CommodityPurchaseStatusFilter, 'created_at', 'commodity__commodity_type')
+    search_fields = ('user__username', 'commodity__name', 'contact_phone')
+    readonly_fields = ('user', 'commodity', 'total_zcoin', 'status', 'created_at', 
+                      'updated_at', 'purchase_summary')
+    fieldsets = (
+        ('Purchase Details', {
+            'fields': ('purchase_summary', 'user', 'commodity', 'quantity', 'total_zcoin')
+        }),
+        ('Delivery Information', {
+            'fields': ('delivery_address', 'contact_phone', 'special_instructions')
+        }),
+        ('Order Management', {
+            'fields': ('status',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at')
+        }),
     )
-    cover_type = forms.ChoiceField(
-        choices=ZCoinCalculatorSettings.BOOK_COVERS,
-        required=False,
-        initial=''
-    )
-    has_images = forms.BooleanField(required=False, initial=False)
-    has_dust_jacket = forms.BooleanField(required=False, initial=False)
-    is_first_edition = forms.BooleanField(required=False, initial=False)
-    is_signed = forms.BooleanField(required=False, initial=False)
-    manual_zcoin = forms.DecimalField(
-        required=False,
-        max_digits=10,
-        decimal_places=2,
-        help_text="Enter manual ZCoin value to override calculation"
-    )
+    actions = ['mark_as_processing', 'mark_as_shipped', 'mark_as_delivered', 
+               'mark_as_cancelled', 'refund_purchase']
+    
+    def purchase_id(self, obj):
+        """Display purchase ID"""
+        return f"PUR-{obj.id:06d}"
+    purchase_id.short_description = 'Purchase ID'
+    
+    def user_link(self, obj):
+        url = reverse("admin:auth_user_change", args=[obj.user.id])
+        return format_html('<a href="{}">{}</a>', url, obj.user.username)
+    user_link.short_description = "User"
+    
+    def commodity_link(self, obj):
+        url = reverse("admin:core_commodity_change", args=[obj.commodity.id])
+        return format_html('<a href="{}">{}</a>', url, obj.commodity.name)
+    commodity_link.short_description = "Commodity"
+    
+    def total_zcoin_display(self, obj):
+        """Display total ZCoin spent"""
+        return format_html(
+            '<span style="font-weight: bold; color: #22c55e;">Ⓩ {}</span>',
+            format(obj.total_zcoin, ',').rstrip('0').rstrip('.')
+        )
+    total_zcoin_display.short_description = 'Total ZCoin'
+    
+    def status_badge(self, obj):
+        """Display status with color-coded badge"""
+        colors = {
+            'pending': '#fb923c',     # orange
+            'processing': '#3b82f6',  # blue
+            'shipped': '#8b5cf6',     # purple
+            'delivered': '#22c55e',   # green
+            'cancelled': '#ef4444',   # red
+        }
+        icons = {
+            'pending': '⏳',
+            'processing': '⚙️',
+            'shipped': '🚚',
+            'delivered': '✅',
+            'cancelled': '❌',
+        }
+        color = colors.get(obj.status, '#666')
+        icon = icons.get(obj.status, '❓')
+        
+        return format_html(
+            '<span style="background:{}; color:white; padding:4px 10px; border-radius:12px; '
+            'font-size:12px; display:inline-flex; align-items:center; gap:5px;">'
+            '{} {}</span>',
+            color, icon, obj.status.upper()
+        )
+    status_badge.short_description = 'Status'
+    
+    def delivery_info(self, obj):
+        """Display delivery information"""
+        if obj.delivery_address:
+            return format_html(
+                '<div style="max-width: 200px;">'
+                '<div><strong>📞</strong> {}</div>'
+                '<div style="font-size: 11px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">'
+                '{}</div>'
+                '</div>',
+                obj.contact_phone or 'Not provided',
+                obj.delivery_address[:50] + '...' if len(obj.delivery_address) > 50 else obj.delivery_address
+            )
+        return "No delivery info"
+    delivery_info.short_description = 'Delivery Info'
+    
+    def purchase_summary(self, obj):
+        """Display purchase summary for readonly field"""
+        return format_html(
+            '<div style="background: rgba(7, 40, 92, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #ddd;">'
+            '<h4 style="margin-top: 0;">📦 Purchase Summary</h4>'
+            '<div><strong>Item:</strong> {}</div>'
+            '<div><strong>Type:</strong> {}</div>'
+            '<div><strong>Quantity:</strong> {}</div>'
+            '<div><strong>Unit Price:</strong> Ⓩ {}</div>'
+            '<div><strong>Total Cost:</strong> Ⓩ {}</div>'
+            '<div><strong>Purchased On:</strong> {}</div>'
+            '</div>',
+            obj.commodity.name,
+            obj.commodity.get_commodity_type_display(),
+            obj.quantity,
+            format(obj.commodity.zcoin_value, ',').rstrip('0').rstrip('.'),
+            format(obj.total_zcoin, ',').rstrip('0').rstrip('.'),
+            obj.created_at.strftime('%Y-%m-%d %H:%M')
+        )
+    purchase_summary.short_description = 'Summary'
+    
+    def mark_as_processing(self, request, queryset):
+        """Mark purchases as processing"""
+        count = queryset.filter(status='pending').update(status='processing')
+        self.message_user(request, f"{count} purchases marked as processing")
+    mark_as_processing.short_description = "Mark as Processing"
+    
+    def mark_as_shipped(self, request, queryset):
+        """Mark purchases as shipped"""
+        count = queryset.filter(status='processing').update(status='shipped')
+        self.message_user(request, f"{count} purchases marked as shipped")
+    mark_as_shipped.short_description = "Mark as Shipped"
+    
+    def mark_as_delivered(self, request, queryset):
+        """Mark purchases as delivered"""
+        count = queryset.filter(status='shipped').update(status='delivered')
+        self.message_user(request, f"{count} purchases marked as delivered")
+    mark_as_delivered.short_description = "Mark as Delivered"
+    
+    def mark_as_cancelled(self, request, queryset):
+        """Cancel purchases and refund ZCoin"""
+        with transaction.atomic():
+            count = 0
+            for purchase in queryset.filter(status__in=['pending', 'processing']):
+                # Refund ZCoin to user
+                wallet = Wallet.get_or_create_for_user(purchase.user)
+                wallet.zcoin_balance += purchase.total_zcoin
+                wallet.save()
+                
+                # Restock the commodity
+                commodity = purchase.commodity
+                commodity.stock_quantity += purchase.quantity
+                commodity.save()
+                
+                # Update purchase status
+                purchase.status = 'cancelled'
+                purchase.save()
+                
+                # Record refund transaction
+                Transaction.objects.create(
+                    user=purchase.user,
+                    transaction_type='refund',
+                    amount=purchase.total_zcoin,
+                    description=f"Commodity purchase cancelled: {purchase.commodity.name} x{purchase.quantity}"
+                )
+                
+                count += 1
+            
+            self.message_user(
+                request, 
+                f"{count} purchases cancelled. ZCoin refunded and items restocked."
+            )
+    mark_as_cancelled.short_description = "Cancel & Refund"
+    
+    def refund_purchase(self, request, queryset):
+        """Refund ZCoin for already delivered/cancelled purchases"""
+        with transaction.atomic():
+            count = 0
+            for purchase in queryset.filter(status__in=['delivered', 'cancelled']):
+                # Check if already refunded
+                existing_refunds = Transaction.objects.filter(
+                    user=purchase.user,
+                    description__contains=f"Commodity refund: {purchase.commodity.name}"
+                ).count()
+                
+                if existing_refunds == 0:
+                    # Refund ZCoin
+                    wallet = Wallet.get_or_create_for_user(purchase.user)
+                    wallet.zcoin_balance += purchase.total_zcoin
+                    wallet.save()
+                    
+                    # Record refund transaction
+                    Transaction.objects.create(
+                        user=purchase.user,
+                        transaction_type='refund',
+                        amount=purchase.total_zcoin,
+                        description=f"Commodity refund: {purchase.commodity.name} x{purchase.quantity}"
+                    )
+                    
+                    count += 1
+            
+            self.message_user(request, f"{count} purchases refunded.")
+    refund_purchase.short_description = "Refund ZCoin"
+    
+    def save_model(self, request, obj, form, change):
+        """Handle status changes"""
+        if change and 'status' in form.changed_data:
+            old_status = Book.objects.get(pk=obj.pk).status if obj.pk else None
+            new_status = obj.status
+            
+            # If changing from delivered to cancelled, restock items
+            if old_status == 'delivered' and new_status == 'cancelled':
+                # Restock the commodity
+                commodity = obj.commodity
+                commodity.stock_quantity += obj.quantity
+                commodity.save()
+                
+                # Refund ZCoin
+                wallet = Wallet.get_or_create_for_user(obj.user)
+                wallet.zcoin_balance += obj.total_zcoin
+                wallet.save()
+                
+                Transaction.objects.create(
+                    user=obj.user,
+                    transaction_type='refund',
+                    amount=obj.total_zcoin,
+                    description=f"Commodity order cancelled: {obj.commodity.name}"
+                )
+                
+                messages.success(request, 
+                    f"Order cancelled. {obj.quantity} units restocked and Ⓩ{obj.total_zcoin} refunded."
+                )
+        
+        super().save_model(request, obj, form, change)
+
+# ===================================================================
+# 8. ZCOIN CALCULATOR SETTINGS ADMIN
+# ===================================================================
 
 @admin.register(ZCoinCalculatorSettings)
 class ZCoinCalculatorSettingsAdmin(admin.ModelAdmin):
-    """Admin for ZCoin calculator settings"""
-    list_display = ('updated_at', 'min_zcoin', 'max_zcoin', 'zcoin_to_birr_rate')
+    """Admin for calculator settings"""
+    list_display = ('updated_at',)
+    
     fieldsets = (
         ('Category Base Values', {
-            'fields': ('classics_base', 'nonfiction_base', 'fiction_base', 
-                      'contemporary_base', 'academic_base', 'children_base', 
-                      'reference_base')
+            'fields': (
+                ('classics_base', 'nonfiction_base'),
+                ('fiction_base', 'contemporary_base'),
+                ('academic_base', 'children_base'),
+                ('reference_base',)
+            )
         }),
         ('Condition Multipliers', {
-            'fields': ('excellent_multiplier', 'good_multiplier', 
-                      'fair_multiplier', 'poor_multiplier')
+            'fields': (
+                ('excellent_multiplier', 'good_multiplier'),
+                ('fair_multiplier', 'poor_multiplier')
+            )
         }),
-        ('Cover Bonuses/Penalties', {
+        ('Cover Bonuses', {
             'fields': ('hardcover_bonus', 'dust_jacket_bonus', 'no_cover_penalty')
         }),
-        ('Additional Bonuses', {
-            'fields': ('has_images_bonus', 'has_original_dust_jacket', 
-                      'is_first_edition_bonus', 'is_signed_bonus')
+        ('Feature Bonuses', {
+            'fields': ('has_images_bonus', 'is_first_edition_bonus', 'is_signed_bonus')
         }),
-        ('Limits and Conversion', {
+        ('Limits & Conversion', {
             'fields': ('min_zcoin', 'max_zcoin', 'zcoin_to_birr_rate')
         }),
     )
 
+# ===================================================================
+# 9. ZCOIN CALCULATION LOG ADMIN
+# ===================================================================
+
 @admin.register(ZCoinCalculationLog)
 class ZCoinCalculationLogAdmin(admin.ModelAdmin):
     """Admin for ZCoin calculation logs"""
-    list_display = ('created_at', 'category', 'condition', 'calculated_zcoin', 
-                   'final_zcoin', 'manual_override', 'calculated_by')
-    list_filter = ('manual_override', 'category', 'condition', 'created_at')
-    search_fields = ('category', 'condition', 'notes', 'book__title')
-    readonly_fields = ('created_at', 'book', 'calculated_by', 'base_value', 
-                      'condition_multiplier', 'bonuses', 'calculated_zcoin', 
-                      'final_zcoin', 'manual_override', 'manual_zcoin', 
-                      'manual_price_birr', 'notes')
-    
-    def has_add_permission(self, request):
-        return False  # Logs are created automatically
-
-# ===================================================================
-# ENHANCED BOOK ADMIN WITH ZCOIN CALCULATOR
-# ===================================================================
-
-class BookAdminForm(forms.ModelForm):
-    """Enhanced form for Book admin with ZCoin calculator"""
-    class Meta:
-        model = Book
-        fields = '__all__'
-    
-    # Add manual override fields
-    manual_zcoin_override = forms.DecimalField(
-        required=False,
-        max_digits=10,
-        decimal_places=2,
-        help_text="Override calculated ZCoin value"
-    )
-    manual_price_override = forms.DecimalField(
-        required=False,
-        max_digits=10,
-        decimal_places=2,
-        help_text="Override calculated price in Birr"
-    )
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # If instance exists, show current values
-        if self.instance and self.instance.pk:
-            self.fields['manual_zcoin_override'].initial = self.instance.zcoin_value
-            self.fields['manual_price_override'].initial = self.instance.price_birr
-
-@admin.register(Book)
-class BookAdmin(admin.ModelAdmin):
-    """Enhanced Book admin with ZCoin calculator integration"""
-    form = BookAdminForm
-    change_form_template = 'admin/core/book/change_form.html'
-    
-    list_display = ('title', 'author', 'added_by_link', 'genre', 'condition', 
-                   'zcoin_value', 'price_birr', 'book_type', 'status_colored', 
-                   'is_available', 'status', 'created_at')
-    list_filter = ('book_type', 'genre', 'condition', 'status', 'is_available', 'created_at')
-    search_fields = ('title', 'author', 'added_by__username', 'added_by__email')
-    list_editable = ('status', 'is_available', 'zcoin_value', 'price_birr')
-    readonly_fields = ('created_at', 'updated_at', 'added_by')
+    list_display = ('id', 'book_link', 'category', 'condition', 'calculated_zcoin', 
+                    'final_zcoin', 'calculated_by', 'created_at')
+    list_filter = ('category', 'condition', 'created_at')
+    search_fields = ('book__title', 'book__author', 'calculated_by__username')
+    readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
     
-    fieldsets = (
-        ('Book Information', {
-            'fields': ('title', 'author', 'genre', 'description', 'cover_image_url')
-        }),
-        ('Physical Details', {
-            'fields': ('condition', 'book_type')
-        }),
-        ('ZCoin Calculator', {
-            'fields': ('manual_zcoin_override', 'manual_price_override'),
-            'classes': ('collapse',),
-            'description': 'Use calculator or enter manual values'
-        }),
-        ('Pricing & Status', {
-            'fields': ('zcoin_value', 'price_birr', 'status', 'is_available')
-        }),
-        ('Additional Info', {
-            'fields': ('added_by', 'created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('calculate-zcoin/', self.admin_site.admin_view(self.calculate_zcoin_view), 
-                 name='book_calculate_zcoin'),
-            path('<int:book_id>/calculate/', self.admin_site.admin_view(self.calculate_book_zcoin), 
-                 name='book_calculate_book_zcoin'),
-        ]
-        return custom_urls + urls
-    
-    def calculate_zcoin_view(self, request):
-        """Standalone ZCoin calculator view"""
-        if request.method == 'POST':
-            form = ZCoinCalculatorForm(request.POST)
-            if form.is_valid():
-                result = ZCoinCalculator.calculate_zcoin(
-                    category=form.cleaned_data['category'],
-                    condition=form.cleaned_data['condition'],
-                    cover_type=form.cleaned_data['cover_type'] or None,
-                    has_images=form.cleaned_data['has_images'],
-                    has_dust_jacket=form.cleaned_data['has_dust_jacket'],
-                    is_first_edition=form.cleaned_data['is_first_edition'],
-                    is_signed=form.cleaned_data['is_signed'],
-                    manual_zcoin=form.cleaned_data['manual_zcoin'],
-                    user=request.user
-                )
-                
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return JsonResponse(result)
-                
-                return render(request, 'admin/core/book/calculator_result.html', {
-                    'result': result,
-                    'form': form,
-                    'title': 'ZCoin Calculator Result',
-                })
-        else:
-            form = ZCoinCalculatorForm()
-        
-        return render(request, 'admin/core/book/calculator.html', {
-            'form': form,
-            'title': 'ZCoin Calculator',
-            'opts': self.model._meta,
-        })
-    
-    def calculate_book_zcoin(self, request, book_id):
-        """Calculate ZCoin for a specific book"""
-        try:
-            book = Book.objects.get(id=book_id)
-            
-            # Auto-calculate based on book attributes
-            result = ZCoinCalculator.calculate_zcoin(
-                category=book.genre,
-                condition=book.condition,
-                book=book,
-                user=request.user
-            )
-            
-            # Update book with calculated values
-            book.zcoin_value = result['zcoin']
-            book.price_birr = result['price_birr']
-            book.save()
-            
-            messages.success(request, f"Calculated ZCoin: {result['zcoin']} (Price: {result['price_birr']} Birr)")
-            
-        except Book.DoesNotExist:
-            messages.error(request, "Book not found")
-        
-        return redirect(f'../{book_id}/change/')
-    
-    def save_model(self, request, obj, form, change):
-        """Override save to handle manual overrides"""
-        from decimal import Decimal
-        from .models import ZCoinCalculatorSettings
-        
-        manual_zcoin = form.cleaned_data.get('manual_zcoin_override')
-        manual_price = form.cleaned_data.get('manual_price_override')
-        
-        # If manual values are provided, use them
-        if manual_zcoin is not None:
-            # Ensure manual_zcoin is Decimal
-            if isinstance(manual_zcoin, float):
-                manual_zcoin_decimal = Decimal(str(manual_zcoin))
-            else:
-                manual_zcoin_decimal = Decimal(manual_zcoin)
-                
-            obj.zcoin_value = manual_zcoin_decimal
-            
-            # If manual price is also provided, use it, otherwise calculate from ZCoin
-            if manual_price is not None:
-                if isinstance(manual_price, float):
-                    obj.price_birr = Decimal(str(manual_price))
-                else:
-                    obj.price_birr = Decimal(manual_price)
-            else:
-                settings = ZCoinCalculatorSettings.get_active_settings()
-                obj.price_birr = manual_zcoin_decimal * settings.zcoin_to_birr_rate
-            
-            # Log manual override
-            ZCoinCalculationLog.objects.create(
-                book=obj,
-                calculated_by=request.user,
-                category=obj.genre,
-                condition=obj.condition,
-                base_value=Decimal('0.00'),
-                condition_multiplier=Decimal('0.00'),
-                bonuses=Decimal('0.00'),
-                calculated_zcoin=manual_zcoin_decimal,
-                final_zcoin=manual_zcoin_decimal,
-                manual_override=True,
-                manual_zcoin=manual_zcoin_decimal,
-                manual_price_birr=obj.price_birr,
-                notes="Manual override in admin"
-            )
-        
-        super().save_model(request, obj, form, change)
-    
-    def added_by_link(self, obj):
-        url = reverse("admin:auth_user_change", args=[obj.added_by.id])
-        return format_html('<a href="{}">{}</a>', url, obj.added_by.username)
-    added_by_link.short_description = "Added By"
-    
-    def status_colored(self, obj):
-        colors = {
-            'pending': '#fb923c',
-            'approved': '#22c55e',
-            'rejected': '#ef4444',
-        }
-        return format_html(
-            '<span style="background:{}; color:white; padding:2px 8px; border-radius:4px;">{}</span>',
-            colors.get(obj.status, '#666'),
-            obj.status.replace('_', ' ').title()
-        )
-    status_colored.short_description = "Status"
-    
-    # Add custom actions
-    actions = ['approve_books', 'reject_books', 'calculate_zcoin_for_books', 
-               'apply_manual_zcoin', 'recalculate_all_zcoin']
-    
-    def approve_books(self, request, queryset):
-        """Approve books and award ZCoin to uploaders"""
-        from decimal import Decimal
-        from .utils.zcoin_calculator import ZCoinCalculator
-        
-        count = 0
-        for book in queryset.filter(status='pending'):
-            try:
-                # Update book status
-                book.status = 'approved'
-                book.is_available = True
-                
-                # Calculate ZCoin value for this book
-                result = ZCoinCalculator.calculate_zcoin(
-                    category=book.genre,
-                    condition=book.condition,
-                    book=book,
-                    user=request.user
-                )
-                
-                # Update book with calculated values
-                book.zcoin_value = Decimal(str(result['zcoin']))  # Convert back to Decimal
-                book.price_birr = Decimal(str(result['price_birr']))  # Convert back to Decimal
-                book.save()
-                
-                # Award ZCoin to user
-                wallet = Wallet.get_or_create_for_user(book.added_by)
-                award_amount = Decimal(str(result['zcoin']))
-                
-                wallet.zcoin_balance += award_amount
-                wallet.save()
-                
-                # Record transaction
-                Transaction.objects.create(
-                    user=book.added_by,
-                    transaction_type='topup',
-                    amount=award_amount,
-                    description=f"Book upload approved: {book.title}",
-                    related_swap=None
-                )
-                
-                count += 1
-                
-            except Exception as e:
-                self.message_user(request, f"Error approving book '{book.title}': {str(e)}", messages.ERROR)
-        
-        self.message_user(request, f"{count} books approved and ZCoin awarded to users.")
-    approve_books.short_description = "Approve books & award ZCoin"
+    def book_link(self, obj):
+        if obj.book:
+            url = reverse("admin:core_book_change", args=[obj.book.id])
+            return format_html('<a href="{}">{}</a>', url, obj.book.title)
+        return "Standalone Calculation"
+    book_link.short_description = "Book"
 
-    def calculate_zcoin_for_books(self, request, queryset):
-        """Calculate ZCoin for selected books"""
-        from decimal import Decimal
-        from .utils.zcoin_calculator import ZCoinCalculator
-        
-        count = 0
-        for book in queryset:
-            try:
-                result = ZCoinCalculator.calculate_zcoin(
-                    category=book.genre,
-                    condition=book.condition,
-                    book=book,
-                    user=request.user
-                )
-                book.zcoin_value = Decimal(str(result['zcoin']))
-                book.price_birr = Decimal(str(result['price_birr']))
-                book.save()
-                count += 1
-            except Exception as e:
-                self.message_user(request, f"Error calculating for '{book.title}': {str(e)}", messages.ERROR)
-        
-        self.message_user(request, f"ZCoin calculated for {count} books.")
-    calculate_zcoin_for_books.short_description = "Calculate ZCoin for books"
-
-    def apply_manual_zcoin(self, request, queryset):
-        """Apply manual ZCoin value to selected books"""
-        from decimal import Decimal
-        from .models import ZCoinCalculatorSettings
-        
-        # You could add a form here for manual input
-        # For now, we'll apply a fixed value
-        manual_value = Decimal('50.00')  # Default value
-        count = 0
-        
-        for book in queryset:
-            try:
-                book.zcoin_value = manual_value
-                settings = ZCoinCalculatorSettings.get_active_settings()
-                book.price_birr = manual_value * settings.zcoin_to_birr_rate
-                book.save()
-                
-                # Log the manual override
-                ZCoinCalculationLog.objects.create(
-                    book=book,
-                    calculated_by=request.user,
-                    category=book.genre,
-                    condition=book.condition,
-                    base_value=Decimal('0.00'),
-                    condition_multiplier=Decimal('0.00'),
-                    bonuses=Decimal('0.00'),
-                    calculated_zcoin=manual_value,
-                    final_zcoin=manual_value,
-                    manual_override=True,
-                    manual_zcoin=manual_value,
-                    manual_price_birr=book.price_birr,
-                    notes=f"Batch manual override: {manual_value} ZCoin"
-                )
-                count += 1
-            except Exception as e:
-                self.message_user(request, f"Error applying to '{book.title}': {str(e)}", messages.ERROR)
-        
-        self.message_user(request, f"Applied manual ZCoin ({manual_value}) to {count} books.")
-    apply_manual_zcoin.short_description = "Apply manual ZCoin value"
-    
-    def recalculate_all_zcoin(self, request, queryset):
-        """Recalculate ZCoin using latest calculator settings"""
-        count = 0
-        for book in queryset:
-            result = ZCoinCalculator.calculate_zcoin(
-                category=book.genre,
-                condition=book.condition,
-                book=book,
-                user=request.user
-            )
-            book.zcoin_value = result['zcoin']
-            book.price_birr = result['price_birr']
-            book.save()
-            count += 1
-        self.message_user(request, f"ZCoin recalculated for {count} books using latest settings.")
-    recalculate_all_zcoin.short_description = "Recalculate ZCoin with current settings"
-    
-    
 # ===================================================================
 # ADMIN SITE CUSTOMIZATION
 # ===================================================================
 admin.site.site_header = "Zero Book Swap - Admin Panel"
 admin.site.site_title = "Zero Admin"
 admin.site.index_title = "Welcome to Zero Book Swap Management"
+
+# Optional: Reorder admin index to group related models
+def get_app_list(self, request):
+    """
+    Reorder the admin index to group related models
+    """
+    app_dict = self._build_app_dict(request)
+    
+    # Reorder apps
+    app_order = ['auth', 'core']
+    
+    app_list = []
+    for app in app_order:
+        if app in app_dict:
+            app_list.append(app_dict[app])
+    
+    # Add any remaining apps
+    for app in app_dict:
+        if app not in app_order:
+            app_list.append(app_dict[app])
+    
+    # Reorder models within core app
+    for app in app_list:
+        if app['app_label'] == 'core':
+            model_order = [
+                'user',
+                'wallet',
+                'book',
+                'swaprequest',
+                'commodity',
+                'commoditypurchase',
+                'coinpackage',
+                'payment',
+                'transaction',
+                'zcoincalculationsettings',
+                'zcoincalculationlog',
+            ]
+            
+            ordered_models = []
+            for model_name in model_order:
+                for model in app['models']:
+                    if model['object_name'].lower() == model_name:
+                        ordered_models.append(model)
+                        break
+            
+            # Add any remaining models
+            for model in app['models']:
+                if model not in ordered_models:
+                    ordered_models.append(model)
+            
+            app['models'] = ordered_models
+    
+    return app_list
+
+admin.AdminSite.get_app_list = get_app_list

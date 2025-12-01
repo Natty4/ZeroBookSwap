@@ -2,7 +2,17 @@ from rest_framework import serializers
 from decimal import Decimal
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import UserProfile, Wallet, Book, SwapRequest, CoinPackage, Payment, Transaction
+from .models import (
+    UserProfile, 
+    Wallet, 
+    Book, 
+    Commodity, 
+    CommodityPurchase, 
+    SwapRequest, 
+    CoinPackage, 
+    Payment, 
+    Transaction
+)
 
 # serializers.py
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -99,6 +109,23 @@ class BookSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('added_by', 'is_available', 'created_at')
 
+class CommoditySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Commodity
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+class CommodityPurchaseSerializer(serializers.ModelSerializer):
+    commodity_name = serializers.CharField(source='commodity.name', read_only=True)
+    commodity_image = serializers.CharField(source='commodity.image_url', read_only=True)
+    commodity_type = serializers.CharField(source='commodity.commodity_type', read_only=True)
+    user_name = serializers.CharField(source='user.first_name', read_only=True)
+    
+    class Meta:
+        model = CommodityPurchase
+        fields = '__all__'
+        read_only_fields = ('user', 'total_zcoin', 'status', 'created_at', 'updated_at')
+        
 class SwapRequestSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.first_name', read_only=True)
     requested_book_title = serializers.CharField(source='requested_book.title', read_only=True)

@@ -1,60 +1,80 @@
 {% extends "admin/change_form.html" %}
-{% load i18n admin_urls static %}
+{% load i18n admin_urls %}
 
-{% block extrahead %}
+{% block after_field_sets %}
 {{ block.super }}
-<script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
 <script>
-$(document).ready(function() {
-    // Add calculator button
-    $('.submit-row').prepend(
-        '<input type="button" value="Calculate ZCoin" class="default" id="calculate-zcoin-btn" style="margin-right: 10px;">'
-    );
-    
-    $('#calculate-zcoin-btn').click(function() {
-        const bookId = window.location.pathname.split('/').slice(-2, -1)[0];
-        if (bookId && !isNaN(bookId)) {
-            window.location.href = `calculate/`;
-        } else {
-            alert('Cannot calculate for new book. Please save first.');
-        }
-    });
-    
-    // Auto-calculate when relevant fields change
-    $('#id_genre, #id_condition').change(function() {
-        if ($('#id_zcoin_value').val() === '' || confirm('Recalculate ZCoin based on new values?')) {
-            const bookId = window.location.pathname.split('/').slice(-2, -1)[0];
-            if (bookId && !isNaN(bookId)) {
-                fetch(`calculate/`, {
-                    method: 'GET',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                })
-                .then(response => {
-                    if (response.ok) {
-                        location.reload();
-                    }
-                });
-            }
-        }
-    });
+// Add AJAX calculation to the change form
+document.addEventListener('DOMContentLoaded', function() {
+    const calculateBtn = document.querySelector('a[href$="calculate/"]');
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Get current values from the form
+            const genre = document.querySelector('#id_genre').value;
+            const assessedCondition = document.querySelector('#id_assessed_condition');
+            const condition = assessedCondition ? assessedCondition.value : document.querySelector('#id_condition').value;
+            const coverType = document.querySelector('#id_cover_type').value;
+            const hasImages = document.querySelector('#id_has_images').checked;
+            const hasDustJacket = document.querySelector('#id_has_dust_jacket').checked;
+            const isFirstEdition = document.querySelector('#id_is_first_edition').checked;
+            const isSigned = document.querySelector('#id_is_signed').checked;
+            
+            // Create form data
+            const formData = new URLSearchParams();
+            formData.append('category', genre);
+            formData.append('condition', condition);
+            formData.append('cover_type', coverType);
+            formData.append('has_images', hasImages);
+            formData.append('has_dust_jacket', hasDustJacket);
+            formData.append('is_first_edition', isFirstEdition);
+            formData.append('is_signed', isSigned);
+            
+            // Show loading
+            const originalText = calculateBtn.textContent;
+            calculateBtn.textContent = 'Calculating...';
+            calculateBtn.style.pointerEvents = 'none';
+            
+            // Send AJAX request to calculate endpoint
+            fetch(calculateBtn.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update the form fields
+                document.querySelector('#id_zcoin_value').value = data.zcoin;
+                document.querySelector('#id_price_birr').value = data.price_birr;
+                
+                // Show success message
+                alert(`✓ Calculated: ${data.zcoin} ZCoin (${data.price_birr} Birr)`);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('✗ Error calculating ZCoin: ' + error.message);
+            })
+            .finally(() => {
+                // Restore button
+                calculateBtn.textContent = originalText;
+                calculateBtn.style.pointerEvents = 'auto';
+            });
+        });
+    }
 });
 </script>
-{% endblock %}
-
-{% block object-tools-items %}
-{{ block.super }}
-<li>
-    <a href="{% url 'admin:book_calculate_zcoin' %}" class="historylink">
-        <i class="icon-calculator"></i> ZCoin Calculator
-    </a>
-</li>
-<li>
-    {% if original.pk %}
-    <a href="{% url 'admin:book_calculate_book_zcoin' original.pk %}" class="historylink">
-        <i class="icon-calc"></i> Calculate for this Book
-    </a>
-    {% endif %}
-</li>
 {% endblock %}

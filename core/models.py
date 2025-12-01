@@ -32,6 +32,13 @@ class Wallet(models.Model):
         return wallet
 
 class Book(models.Model):
+    BOOK_STATUS = [
+        ('pending', 'Pending Review'),
+        ('reviewed', 'Reviewed'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
     BOOK_CONDITIONS = [
         ('excellent', 'Excellent'),
         ('good', 'Good'),
@@ -44,6 +51,17 @@ class Book(models.Model):
         ('non-fiction', 'Non-Fiction'),
         ('classics', 'Classics'),
         ('contemporary', 'Contemporary'),
+        ('academic', 'Academic'),
+        ('children', "Children's"),
+        ('reference', 'Reference'),
+    ]
+    
+    BOOK_COVERS = [
+        ('hardcover', 'Hardcover'),
+        ('softcover', 'Softcover'),
+        ('paperback', 'Paperback'),
+        ('dust_jacket', 'Dust Jacket'),
+        ('no_cover', 'No Cover'),
     ]
     
     BOOK_TYPES = [
@@ -51,12 +69,7 @@ class Book(models.Model):
         ('new', 'New Book'),
     ]
     
-    BOOK_STATUS = [  # Add this
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-    ]
-    
+    # Basic info from user
     title = models.CharField(max_length=255)
     slug = models.CharField(max_length=255, null=True, blank=True)
     author = models.CharField(max_length=255)
@@ -64,20 +77,40 @@ class Book(models.Model):
     description = models.TextField(blank=True)
     cover_image_url = models.CharField(max_length=999, null=True, blank=True)
     condition = models.CharField(max_length=20, choices=BOOK_CONDITIONS, default='good')
+    book_type = models.CharField(max_length=10, choices=BOOK_TYPES)
+    
+    # Admin review fields
+    assessed_condition = models.CharField(max_length=20, choices=BOOK_CONDITIONS, null=True, blank=True)
+    cover_type = models.CharField(max_length=20, choices=BOOK_COVERS, null=True, blank=True)
+    has_images = models.BooleanField(default=False)
+    has_dust_jacket = models.BooleanField(default=False)
+    is_first_edition = models.BooleanField(default=False)
+    is_signed = models.BooleanField(default=False)
+    review_notes = models.TextField(blank=True)
+    
+    # Calculated values
     zcoin_value = models.DecimalField(
         max_digits=15, 
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        default=Decimal('0.00')
     )
     price_birr = models.DecimalField(
         max_digits=10, 
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        default=Decimal('0.00')
     )
-    book_type = models.CharField(max_length=10, choices=BOOK_TYPES)
+    
+    # Status tracking
     status = models.CharField(max_length=20, choices=BOOK_STATUS, default='pending')
-    is_available = models.BooleanField(default=True)
+    is_available = models.BooleanField(default=False)
     added_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='books_added')
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='books_reviewed')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='books_approved')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -92,7 +125,82 @@ class Book(models.Model):
 
     def __str__(self):
         return f"{self.title} by {self.author}"
+   
 
+class Commodity(models.Model):
+    COMMODITY_TYPES = [
+        ('stationery', 'Stationery'),
+        ('book_accessory', 'Book Accessory'),
+        ('reading_aid', 'Reading Aid'),
+        ('gift', 'Gift Item'),
+    ]
+    
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    commodity_type = models.CharField(max_length=50, choices=COMMODITY_TYPES, default='stationery')
+    image_url = models.CharField(max_length=500, blank=True, null=True)
+    
+    # Pricing
+    price_birr = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    zcoin_value = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    
+    # Inventory
+    stock_quantity = models.IntegerField(default=0)
+    is_available = models.BooleanField(default=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['commodity_type', 'name']
+        verbose_name_plural = "Commodities"
+    
+    def __str__(self):
+        return f"{self.name} - Ⓩ{self.zcoin_value}"
+
+class CommodityPurchase(models.Model):
+    PURCHASE_STATUS = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('shipped', 'Shipped'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='commodity_purchases')
+    commodity = models.ForeignKey(Commodity, on_delete=models.CASCADE, related_name='purchases')
+    quantity = models.IntegerField(default=1)
+    total_zcoin = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    status = models.CharField(max_length=20, choices=PURCHASE_STATUS, default='pending')
+    
+    # Delivery info
+    delivery_address = models.TextField(blank=True)
+    contact_phone = models.CharField(max_length=20, blank=True)
+    special_instructions = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.commodity.name} x{self.quantity}"
+    
+     
 class SwapRequest(models.Model):
     SWAP_STATUS = [
         ('pending', 'Pending'),
@@ -219,34 +327,10 @@ class Transaction(models.Model):
     def __str__(self):
         return f"{self.transaction_type} - {self.amount} ZCoin"
     
+# In models.py
 
 class ZCoinCalculatorSettings(models.Model):
-    """Configuration for ZCoin calculation"""
-    
-    CATEGORIES = [
-        ('classics', 'Classics'),
-        ('non-fiction', 'Non-Fiction'),
-        ('fiction', 'Fiction'),
-        ('contemporary', 'Contemporary'),
-        ('academic', 'Academic'),
-        ('children', "Children's"),
-        ('reference', 'Reference'),
-    ]
-    
-    CONDITION_MULTIPLIERS = [
-        ('excellent', 'Excellent (80-100%)'),
-        ('good', 'Good (60-79%)'),
-        ('fair', 'Fair (40-59%)'),
-        ('poor', 'Poor (0-39%)'),
-    ]
-    
-    BOOK_COVERS = [
-        ('hardcover', 'Hardcover'),
-        ('softcover', 'Softcover'),
-        ('paperback', 'Paperback'),
-        ('dust_jacket', 'Dust Jacket'),
-        ('no_cover', 'No Cover'),
-    ]
+    """Settings for ZCoin calculation"""
     
     # Base values for categories
     classics_base = models.DecimalField(max_digits=10, decimal_places=2, default=30.00)
@@ -257,28 +341,27 @@ class ZCoinCalculatorSettings(models.Model):
     children_base = models.DecimalField(max_digits=10, decimal_places=2, default=18.00)
     reference_base = models.DecimalField(max_digits=10, decimal_places=2, default=40.00)
     
-    # Condition multipliers (percentage)
+    # Condition multipliers
     excellent_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=1.50)
     good_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
     fair_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=0.70)
     poor_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=0.40)
     
-    # Cover type bonuses/penalties
+    # Cover bonuses
     hardcover_bonus = models.DecimalField(max_digits=10, decimal_places=2, default=10.00)
     dust_jacket_bonus = models.DecimalField(max_digits=10, decimal_places=2, default=15.00)
     no_cover_penalty = models.DecimalField(max_digits=10, decimal_places=2, default=-5.00)
     
-    # Additional factors
+    # Feature bonuses
     has_images_bonus = models.DecimalField(max_digits=10, decimal_places=2, default=5.00)
-    has_original_dust_jacket = models.DecimalField(max_digits=10, decimal_places=2, default=8.00)
     is_first_edition_bonus = models.DecimalField(max_digits=10, decimal_places=2, default=20.00)
     is_signed_bonus = models.DecimalField(max_digits=10, decimal_places=2, default=25.00)
     
-    # Minimum and maximum ZCoin values
+    # Limits
     min_zcoin = models.DecimalField(max_digits=10, decimal_places=2, default=5.00)
     max_zcoin = models.DecimalField(max_digits=10, decimal_places=2, default=200.00)
     
-    # ZCoin to Birr conversion rate
+    # Conversion rate
     zcoin_to_birr_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0.10)
     
     updated_at = models.DateTimeField(auto_now=True)
@@ -288,13 +371,12 @@ class ZCoinCalculatorSettings(models.Model):
         verbose_name_plural = "ZCoin Calculator Settings"
     
     def __str__(self):
-        return "ZCoin Calculator Configuration"
+        return "ZCoin Calculator Settings"
     
     @classmethod
     def get_active_settings(cls):
         obj, created = cls.objects.get_or_create(pk=1)
         return obj
-
 class ZCoinCalculationLog(models.Model):
     """Log of all ZCoin calculations"""
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='zcoin_calculations', null=True, blank=True)
@@ -310,8 +392,8 @@ class ZCoinCalculationLog(models.Model):
     is_signed = models.BooleanField(default=False)
     
     # Calculation results
-    base_value = models.DecimalField(max_digits=10, decimal_places=2)
-    condition_multiplier = models.DecimalField(max_digits=5, decimal_places=2)
+    base_value = models.DecimalField(max_digits=10, decimal_places=2, default=10)
+    condition_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=10)
     bonuses = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     calculated_zcoin = models.DecimalField(max_digits=10, decimal_places=2)
     final_zcoin = models.DecimalField(max_digits=10, decimal_places=2)  # After min/max adjustment
@@ -327,3 +409,5 @@ class ZCoinCalculationLog(models.Model):
     
     def __str__(self):
         return f"ZCoin Calculation: {self.category} - {self.final_zcoin} ZCoin"
+    
+

@@ -1,0 +1,13 @@
+{% extends "admin/base.html" %}
+
+{% block nav-global %}
+{{ block.super }}
+{% if user.is_staff %}
+<div style="float: right; margin-right: 20px;">
+    <a href="{% url 'admin:book_calculator' %}" 
+       style="background: #4CAF50; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
+        <i class="icon-calculator"></i> ZCoin Calculator
+    </a>
+</div>
+{% endif %}
+{% endblock %}

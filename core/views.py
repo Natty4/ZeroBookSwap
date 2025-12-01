@@ -18,11 +18,30 @@ from decimal import Decimal
 import logging
 import re
 
-from .models import UserProfile, Wallet, Book, SwapRequest, CoinPackage, Payment, Transaction
+from .models import (
+    UserProfile, 
+    Wallet, 
+    Book, 
+    Commodity,
+    CommodityPurchase,
+    SwapRequest, 
+    CoinPackage, 
+    Payment, 
+    Transaction
+    )
+
 from .serializers import (
-    UserRegistrationSerializer, UserLoginSerializer, UserProfileSerializer, UserProfileDetailSerializer,
-    BookSerializer, SwapRequestSerializer, 
-    CoinPackageSerializer, PaymentSerializer, TransactionSerializer, 
+    UserRegistrationSerializer, 
+    UserLoginSerializer, 
+    UserProfileSerializer, 
+    UserProfileDetailSerializer,
+    BookSerializer, 
+    CommoditySerializer,
+    CommodityPurchaseSerializer,
+    SwapRequestSerializer, 
+    CoinPackageSerializer, 
+    PaymentSerializer, 
+    TransactionSerializer, 
     ZCoinCalculatorSerializer
 )
 from .utils.payment_verification import TelebirrVerifier, AbyssiniaVerifier
@@ -112,7 +131,6 @@ class UserLogoutView(APIView):
         response.delete_cookie('csrftoken')
         
         return response
-
 
 class CreatePaymentView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -365,7 +383,90 @@ class BookViewSet(viewsets.ModelViewSet):
             price_birr=25
         )
 
+class CommodityViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing commodities
+    """
+    serializer_class = CommoditySerializer
+    permission_classes = [permissions.AllowAny]
+    
+    def get_queryset(self):
+        queryset = Commodity.objects.filter(is_available=True)
+        
+        # Filter by type if provided
+        commodity_type = self.request.query_params.get('type', None)
+        if commodity_type:
+            queryset = queryset.filter(commodity_type=commodity_type)
+            
+        # Filter by availability
+        in_stock = self.request.query_params.get('in_stock', None)
+        if in_stock == 'true':
+            queryset = queryset.filter(stock_quantity__gt=0)
+            
+        return queryset
 
+class CommodityPurchaseViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for purchasing commodities
+    """
+    serializer_class = CommodityPurchaseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return CommodityPurchase.objects.filter(user=self.request.user)
+    
+    @transaction.atomic
+    def perform_create(self, serializer):
+        commodity = serializer.validated_data['commodity']
+        quantity = serializer.validated_data.get('quantity', 1)
+        
+        # Check stock
+        if commodity.stock_quantity < quantity:
+            raise ValidationError(f"Insufficient stock. Only {commodity.stock_quantity} available.")
+        
+        # Calculate total cost
+        total_zcoin = commodity.zcoin_value * quantity
+        
+        # Check user balance
+        wallet = Wallet.get_or_create_for_user(self.request.user)
+        if wallet.zcoin_balance < total_zcoin:
+            raise ValidationError(f"Insufficient ZCoin balance. Need Ⓩ{total_zcoin}, have Ⓩ{wallet.zcoin_balance}")
+        
+        # Process purchase
+        commodity.stock_quantity -= quantity
+        commodity.save()
+        
+        wallet.zcoin_balance -= total_zcoin
+        wallet.save()
+        
+        # Create purchase record
+        purchase = serializer.save(
+            user=self.request.user,
+            total_zcoin=total_zcoin
+        )
+        
+        # Create transaction record
+        Transaction.objects.create(
+            user=self.request.user,
+            transaction_type='purchase',
+            amount=-total_zcoin,
+            description=f"Commodity Purchase: {commodity.name} x{quantity}",
+        )
+        
+        return purchase
+
+class UserCommodityPurchasesView(APIView):
+    """
+    Get user's commodity purchase history
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        purchases = CommodityPurchase.objects.filter(user=request.user)
+        serializer = CommodityPurchaseSerializer(purchases, many=True)
+        return Response(serializer.data)
+    
+    
 class SwapRequestViewSet(viewsets.ModelViewSet):
     serializer_class = SwapRequestSerializer
     permission_classes = [permissions.AllowAny]  # This is correct for POST
