@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from django.middleware.csrf import get_token, rotate_token
 from django.http import JsonResponse
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.conf import settings
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -45,6 +45,10 @@ from .serializers import (
     ZCoinCalculatorSerializer
 )
 from .utils.payment_verification import TelebirrVerifier, AbyssiniaVerifier
+from .utils.error_handler import (
+    UserFriendlyError, ValidationErrorHandler, 
+    AuthenticationErrorHandler, NotFoundErrorHandler
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,57 +64,57 @@ class CSRFView(APIView):
             'message': 'CSRF token set successfully'
         })
 
-class UserRegistrationView(APIView):
-    permission_classes = [permissions.AllowAny]
+# class UserRegistrationView(APIView):
+#     permission_classes = [permissions.AllowAny]
     
-    def post(self, request):
-        serializer = UserRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
+#     def post(self, request):
+#         serializer = UserRegistrationSerializer(data=request.data)
+#         if serializer.is_valid():
+#             user = serializer.save()
             
-            # Return user data with profile
-            profile_serializer = UserProfileSerializer(user.profile)
-            wallet = Wallet.get_or_create_for_user(user)
-            wallet.zcoin_balance += 10
-            wallet.save()
-            return Response({
-                'message': 'User registered successfully',
-                'user': profile_serializer.data
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#             # Return user data with profile
+#             profile_serializer = UserProfileSerializer(user.profile)
+#             wallet = Wallet.get_or_create_for_user(user)
+#             wallet.zcoin_balance += 10
+#             wallet.save()
+#             return Response({
+#                 'message': 'User registered successfully',
+#                 'user': profile_serializer.data
+#             }, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # Enhanced UserLoginView with better session handling
-class UserLoginView(APIView):
-    permission_classes = [permissions.AllowAny]
+# class UserLoginView(APIView):
+#     permission_classes = [permissions.AllowAny]
     
-    def post(self, request):
-        serializer = UserLoginSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.validated_data['user']
+#     def post(self, request):
+#         serializer = UserLoginSerializer(data=request.data)
+#         if serializer.is_valid():
+#             user = serializer.validated_data['user']
             
-            # Log the user in (create session)
-            auth_login(request, user)
+#             # Log the user in (create session)
+#             auth_login(request, user)
             
-            # Update last login
-            user.last_login = timezone.now()
-            user.save()
+#             # Update last login
+#             user.last_login = timezone.now()
+#             user.save()
             
-            # Return user data with profile
-            profile_serializer = UserProfileSerializer(user.profile)
+#             # Return user data with profile
+#             profile_serializer = UserProfileSerializer(user.profile)
             
-            response_data = {
-                'message': 'Login successful',
-                'user': profile_serializer.data,
-                'session_expiry': settings.SESSION_COOKIE_AGE
-            }
+#             response_data = {
+#                 'message': 'Login successful',
+#                 'user': profile_serializer.data,
+#                 'session_expiry': settings.SESSION_COOKIE_AGE
+#             }
             
-            response = Response(response_data)
+#             response = Response(response_data)
             
-            # Set custom header for session management
-            response['X-Session-Expiry'] = settings.SESSION_COOKIE_AGE
+#             # Set custom header for session management
+#             response['X-Session-Expiry'] = settings.SESSION_COOKIE_AGE
             
-            return response
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#             return response
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # Enhanced UserLogoutView
 class UserLogoutView(APIView):
@@ -132,6 +136,95 @@ class UserLogoutView(APIView):
         
         return response
 
+
+class UserRegistrationView(APIView):
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        try:
+            serializer = UserRegistrationSerializer(data=request.data)
+            if serializer.is_valid():
+                user = serializer.save()
+                
+                # Return user data with profile
+                profile_serializer = UserProfileSerializer(user.profile)
+                wallet = Wallet.get_or_create_for_user(user)
+                wallet.zcoin_balance += 10
+                wallet.save()
+                
+                return Response({
+                    'success': True,
+                    'message': 'Registration successful! Welcome to Zero Book Swap.',
+                    'user': profile_serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Collect validation errors
+                errors = []
+                for field, field_errors in serializer.errors.items():
+                    field_name = field.replace('_', ' ').title()
+                    for error in field_errors:
+                        if 'already exists' in str(error).lower():
+                            errors.append(f"{field_name} is already taken.")
+                        elif 'required' in str(error).lower():
+                            errors.append(f"{field_name} is required.")
+                        elif 'match' in str(error).lower():
+                            errors.append(f"Passwords do not match.")
+                        else:
+                            errors.append(f"{field_name}: {error}")
+                
+                error_message = ' '.join(errors) if errors else "Please check your registration details."
+                raise ValidationErrorHandler(friendly_message=error_message)
+                
+        except ValidationError as e:
+            raise ValidationErrorHandler(friendly_message=str(e))
+        except IntegrityError as e:
+            if 'unique' in str(e).lower():
+                raise ValidationErrorHandler(friendly_message="This username or email is already registered.")
+            raise UserFriendlyError(friendly_message="Registration failed. Please try different details.")
+        except Exception as e:
+            logger.error(f"Registration error: {e}")
+            raise UserFriendlyError(friendly_message="Registration failed. Please try again.")
+
+# Update UserLoginView
+class UserLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        try:
+            serializer = UserLoginSerializer(data=request.data)
+            if serializer.is_valid():
+                user = serializer.validated_data['user']
+                
+                # Log the user in (create session)
+                auth_login(request, user)
+                
+                # Update last login
+                user.last_login = timezone.now()
+                user.save()
+                
+                # Return user data with profile
+                profile_serializer = UserProfileSerializer(user.profile)
+                
+                response_data = {
+                    'success': True,
+                    'message': 'Login successful! Welcome back.',
+                    'user': profile_serializer.data,
+                    'session_expiry': settings.SESSION_COOKIE_AGE
+                }
+                
+                response = Response(response_data)
+                response['X-Session-Expiry'] = settings.SESSION_COOKIE_AGE
+                
+                return response
+            
+            # If we get here, authentication failed
+            raise AuthenticationErrorHandler(friendly_message="Invalid username or password. Please try again.")
+            
+        except Exception as e:
+            logger.error(f"Login error: {e}")
+            raise AuthenticationErrorHandler(friendly_message="Login failed. Please check your credentials and try again.")
+        
+        
 class CreatePaymentView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -366,22 +459,34 @@ class BookViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        title = serializer.validated_data['title']
-        user = self.request.user
+        try:
+            title = serializer.validated_data['title']
+            user = self.request.user
 
-        # Prevent user from submitting the same book twice (even if pending)
-        if Book.objects.filter(
-            added_by=user,
-            title__iexact=title
-        ).exists():
-            raise ValidationError("You have already submitted this book for review.")
+            # Prevent duplicate submissions
+            if Book.objects.filter(
+                added_by=user,
+                title__iexact=title
+            ).exists():
+                raise ValidationErrorHandler(
+                    friendly_message="You have already submitted this book for review. "
+                    "Please wait for our team to review it or submit a different book."
+                )
 
-        serializer.save(
-            added_by=self.request.user,
-            is_available=False,
-            book_type='swap',
-            price_birr=25
-        )
+            serializer.save(
+                added_by=self.request.user,
+                is_available=False,
+                book_type='swap',
+                price_birr=25
+            )
+            
+        except ValidationError as e:
+            raise ValidationErrorHandler(friendly_message=str(e))
+        except Exception as e:
+            logger.error(f"Book creation error: {e}")
+            raise UserFriendlyError(
+                friendly_message="Failed to submit book. Please check your details and try again."
+            )
 
 class CommodityViewSet(viewsets.ReadOnlyModelViewSet):
     """
