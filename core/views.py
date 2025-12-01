@@ -173,17 +173,17 @@ class UserRegistrationView(APIView):
                             errors.append(f"{field_name}: {error}")
                 
                 error_message = ' '.join(errors) if errors else "Please check your registration details."
-                raise ValidationErrorHandler(friendly_message=error_message)
+                raise Response({"error": error_message})
                 
         except ValidationError as e:
-            raise ValidationErrorHandler(friendly_message=str(e))
+            raise Response({"error": str(e)})
         except IntegrityError as e:
             if 'unique' in str(e).lower():
-                raise ValidationErrorHandler(friendly_message="This username or email is already registered.")
-            raise UserFriendlyError(friendly_message="Registration failed. Please try different details.")
+                raise Response({"error": "This username or email is already registered."})
+            raise Response({"error": "Registration failed. Please try different details."})
         except Exception as e:
             logger.error(f"Registration error: {e}")
-            raise UserFriendlyError(friendly_message="Registration failed. Please try again.")
+            raise Response({"error": "Registration failed. Please try again."})
 
 # Update UserLoginView
 class UserLoginView(APIView):
@@ -218,11 +218,11 @@ class UserLoginView(APIView):
                 return response
             
             # If we get here, authentication failed
-            raise AuthenticationErrorHandler(friendly_message="Invalid username or password. Please try again.")
+            raise Response({"error": "Invalid username or password. Please try again."})
             
         except Exception as e:
             logger.error(f"Login error: {e}")
-            raise AuthenticationErrorHandler(friendly_message="Login failed. Please check your credentials and try again.")
+            raise Response({"error": "Login failed. Please check your credentials and try again."})
         
         
 class CreatePaymentView(APIView):
